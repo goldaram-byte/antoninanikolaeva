@@ -1,0 +1,17 @@
+# Зависимости
+server/node_modules/
+web/node_modules/
+
+# Секреты — никогда не коммитить
+server/.env
+web/.env
+
+# Сборка фронтенда (собирается на сервере командой npm run build)
+web/dist/
+
+# Загруженные файлы (фото тренеров, баннеры, документы)
+server/src/uploads/
+
+# Разное
+.DS_Store
+*.log

@@ -1,0 +1,18 @@
+# Служба systemd для бэкенда CRM «Школа каратэ Николаевой Антонины».
+# Файл кладётся на сервер в /etc/systemd/system/karate-crm.service
+# Команды: systemctl daemon-reload && systemctl enable --now karate-crm
+[Unit]
+Description=CRM Школа каратэ — бэкенд (Node.js)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/karate/server
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=3
+# Все секреты и настройки — в /opt/karate/server/.env (его читает dotenv)
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# Локальная база данных для разработки: docker compose up -d
+# На боевом сервере PostgreSQL ставится обычным пакетом (см. УСТАНОВКА_НА_СЕРВЕР.md).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: karate
+      POSTGRES_PASSWORD: karate
+      POSTGRES_DB: karate
+    ports:
+      - "5432:5432"
+    volumes:
+      - karate_pgdata:/var/lib/postgresql/data
+volumes:
+  karate_pgdata:
