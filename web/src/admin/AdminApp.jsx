@@ -1,34 +1,36 @@
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import {
-  LayoutDashboard, Users, CalendarDays, ClipboardCheck, ScanLine,
-  Ticket, Wallet, Settings as SettingsIcon, LogOut, Gift, Megaphone,
-  ClipboardList, CalendarClock, Menu, ListChecks, Hourglass,
+  LayoutDashboard, Users, CalendarDays, ClipboardCheck, Ticket, Wallet,
+  Settings as SettingsIcon, LogOut, Gift, ClipboardList, CalendarClock, Menu, ListChecks, Hourglass,
 } from "lucide-react";
 import { clearSession, hasPerm, roleName } from "../api.js";
 import { SettingsProvider } from "../settings.jsx";
 
 import Dashboard from "./Dashboard.jsx";
+import Clients from "./Clients.jsx";
+import ClientDetail from "./ClientDetail.jsx";
+import Subs from "./Subs.jsx";
+import Finance from "./Finance.jsx";
+import SettingsScreen from "./Settings.jsx";
 
-// Разделы админки. stage — на каком этапе раздел появится (заглушка до тех пор).
+// Разделы админки. stage — на каком этапе раздел появится (до этого — заглушка).
 const nav = [
   { to: "/admin", end: true, label: "Дашборд", icon: LayoutDashboard, perm: null },
-  { to: "/admin/clients", label: "Клиенты", icon: Users, perm: "clients_view", stage: 2 },
-  { to: "/admin/funnel", label: "Воронка продаж", icon: ClipboardList, perm: "leads_manage", stage: 6 },
-  { to: "/admin/tasks", label: "Задачи", icon: ListChecks, perm: "clients_view", stage: 6 },
+  { to: "/admin/clients", label: "Клиенты", icon: Users, perm: "clients_view" },
+  { to: "/admin/funnel", label: "Воронка продаж", icon: ClipboardList, perm: "leads_manage", stage: 5 },
+  { to: "/admin/tasks", label: "Задачи", icon: ListChecks, perm: "clients_view", stage: 5 },
   { to: "/admin/schedule", label: "Расписание", icon: CalendarDays, perm: "schedule_view", stage: 3 },
   { to: "/admin/journal", label: "Посещаемость", icon: ClipboardCheck, perm: "attendance_view", stage: 3 },
   { to: "/admin/personal", label: "Журнал записи", icon: CalendarClock, perm: "schedule_view", stage: 3 },
-  { to: "/admin/access", label: "Проход · СКУД", icon: ScanLine, perm: "access_use", stage: 6 },
-  { to: "/admin/subs", label: "Абонементы", icon: Ticket, perm: "subs_manage", stage: 2 },
-  { to: "/admin/finance", label: "Оплаты и долги", icon: Wallet, perm: "finance_view", stage: 2 },
-  { to: "/admin/salary", label: "Зарплата", icon: Wallet, perm: "reports_salary", stage: 6 },
-  { to: "/admin/loyalty", label: "Лояльность", icon: Gift, perm: "loyalty_view", stage: 5 },
-  { to: "/admin/content", label: "Кабинет клиента", icon: Megaphone, perm: "content_manage", stage: 6 },
-  { to: "/admin/settings", label: "Настройки", icon: SettingsIcon, anyPerm: ["settings_manage", "employees_manage"], stage: 2 },
+  { to: "/admin/subs", label: "Абонементы", icon: Ticket, perm: "subs_manage" },
+  { to: "/admin/finance", label: "Оплаты и долги", icon: Wallet, perm: "finance_view" },
+  { to: "/admin/salary", label: "Зарплата", icon: Wallet, perm: "reports_salary", stage: 5 },
+  { to: "/admin/loyalty", label: "Лояльность", icon: Gift, perm: "loyalty_view", stage: 4 },
+  { to: "/admin/settings", label: "Настройки", icon: SettingsIcon, anyPerm: ["settings_manage", "employees_manage"] },
 ];
 
-// Временная страница для разделов, которые появятся на следующих этапах
+// Временная страница для разделов следующих этапов
 function Stub({ label, stage }) {
   return (
     <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
@@ -63,7 +65,6 @@ export default function AdminApp() {
         </div>
 
         <div className="flex lg:min-h-0 lg:flex-1">
-          {/* Затемнение под меню на телефоне */}
           {menuOpen && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMenuOpen(false)} />}
 
           <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-brand-black text-slate-300 transition-transform lg:static lg:z-auto lg:w-56 lg:translate-x-0 ${menuOpen ? "translate-x-0" : "-translate-x-full"}`}>
@@ -92,6 +93,11 @@ export default function AdminApp() {
           <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
             <Routes>
               <Route index element={<Dashboard />} />
+              <Route path="clients" element={<Clients />} />
+              <Route path="clients/:id" element={<ClientDetail />} />
+              <Route path="subs" element={<Subs />} />
+              <Route path="finance" element={<Finance />} />
+              <Route path="settings" element={<SettingsScreen />} />
               {nav.filter((n) => n.stage).map((n) => (
                 <Route key={n.to} path={n.to.replace("/admin/", "")} element={<Stub label={n.label} stage={n.stage} />} />
               ))}

@@ -34,7 +34,6 @@ export default function AdminLogin() {
           <Field label="Пароль"><input type="password" className={inputCls} value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} /></Field>
           {err && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</div>}
           <button className={btnPrimary + " w-full"} disabled={busy} onClick={submit}>{busy ? "Вход…" : "Войти"}</button>
-          <a href="/cabinet/login" className="block text-center text-xs text-slate-400 hover:text-slate-600">Вход для клиентов →</a>
         </div>
       </div>
     </div>

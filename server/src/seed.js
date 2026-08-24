@@ -25,8 +25,6 @@ async function run() {
   const settings = {
     club_name: "Школа каратэ Николаевой Антонины",
     currency: "₽",
-    skud_once_per_day: "true",
-    skud_deny_without_sub: "false",       // без абонемента пропускаем, но помечаем долг
     loyalty_cashback_percent: "0",        // % баллов с покупок
     referral_referrer_percent: "5",       // % пригласившему с первой покупки друга
     referral_friend_percent: "0",         // бонус самому другу
@@ -49,6 +47,14 @@ async function run() {
   // Направление
   await q("INSERT INTO disciplines(name,color) SELECT $1,$2 WHERE NOT EXISTS (SELECT 1 FROM disciplines WHERE name=$1)",
     ["Каратэ", "#DC2626"]);
+
+  // Филиалы: у школы их 4. Названия и адреса меняются в Настройках.
+  const { rows: [{ bcount }] } = await q("SELECT count(*)::int AS bcount FROM branches");
+  if (Number(bcount) === 0) {
+    for (let i = 1; i <= 4; i++)
+      await q("INSERT INTO branches(name,address,sort) VALUES($1,'',$2)", [`Филиал №${i}`, i - 1]);
+    console.log("✓ Созданы 4 филиала (переименуйте их в Настройках)");
+  }
 
   console.log("✓ Сид завершён");
 }

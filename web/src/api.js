@@ -31,9 +31,7 @@ async function req(path, { method = "GET", body, auth = true } = {}) {
   });
   if (res.status === 401) {
     clearSession();
-    // мягкий редирект на нужный вход
-    if (location.pathname.startsWith("/cabinet")) location.href = "/cabinet/login";
-    else location.href = "/admin/login";
+    location.href = "/admin/login";
     throw new Error("Сессия истекла");
   }
   const data = await res.json().catch(() => null);
@@ -48,10 +46,17 @@ export const api = {
   patch: (p, b) => req(p, { method: "PATCH", body: b }),
   del: (p) => req(p, { method: "DELETE" }),
   adminLogin: (email, password) => req("/api/auth/admin/login", { method: "POST", body: { email, password }, auth: false }),
-  clientLogin: (phone, password) => req("/api/auth/client/login", { method: "POST", body: { phone, password }, auth: false }),
-  clientCheck: (phone) => req("/api/auth/client/check", { method: "POST", body: { phone }, auth: false }),
-  clientRegister: (phone, password) => req("/api/auth/client/register", { method: "POST", body: { phone, password }, auth: false }),
 };
 
 // Полный URL к загруженной картинке на сервере
 export const mediaUrl = (path) => (path ? BASE + path : "");
+
+// Ссылки на мессенджеры по номеру телефона (для карточки клиента)
+export const phoneDigits = (phone) => {
+  let d = String(phone || "").replace(/\D/g, "");
+  if (d.length === 11 && d[0] === "8") d = "7" + d.slice(1);
+  return d;
+};
+export const waLink = (phone) => `https://wa.me/${phoneDigits(phone)}`;
+export const tgLink = (phone) => `https://t.me/+${phoneDigits(phone)}`;
+export const telLink = (phone) => `tel:+${phoneDigits(phone)}`;

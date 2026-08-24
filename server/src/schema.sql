@@ -50,8 +50,6 @@ CREATE TABLE IF NOT EXISTS clients (
   phone         TEXT UNIQUE,
   email         TEXT,
   birthdate     DATE,
-  card_id       TEXT UNIQUE,                 -- карта/QR для прохода (СКУД)
-  password_hash TEXT,                        -- для входа в личный кабинет
   notes         TEXT NOT NULL DEFAULT '',
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -59,3 +57,123 @@ CREATE TABLE IF NOT EXISTS clients (
 -- Сотрудник: роль и привязка к тренеру (для scope='own' — «только свои клиенты»)
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS role_id    UUID REFERENCES roles(id) ON DELETE SET NULL;
 ALTER TABLE admins ADD COLUMN IF NOT EXISTS trainer_id UUID REFERENCES trainers(id) ON DELETE SET NULL;
+
+-- ==================== ЭТАП 2: ФИЛИАЛЫ, КЛИЕНТЫ, АБОНЕМЕНТЫ, ФИНАНСЫ ====================
+
+-- Филиалы школы (создаются и удаляются в Настройках)
+CREATE TABLE IF NOT EXISTS branches (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  address    TEXT NOT NULL DEFAULT '',
+  sort       INT  NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Привязка клиента к филиалу
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES branches(id) ON DELETE SET NULL;
+
+-- Лояльность клиента: скидка, баллы, реферальная связь.
+-- Начисление наград — этап 5, но связи фиксируем с первого дня, чтобы их не терять.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS discount_percent NUMERIC(5,2) NOT NULL DEFAULT 0;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS bonus_points     INT NOT NULL DEFAULT 0;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS referral_code    TEXT UNIQUE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS referred_by      UUID REFERENCES clients(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS referrals (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  referrer_id   UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  referred_id   UUID NOT NULL UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
+  status        TEXT NOT NULL DEFAULT 'pending',   -- pending | rewarded
+  reward_points INT NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  rewarded_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_ref_referrer ON referrals(referrer_id);
+
+CREATE TABLE IF NOT EXISTS loyalty_transactions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  points     INT NOT NULL,                        -- + начисление / - списание
+  reason     TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_loyalty_client ON loyalty_transactions(client_id, created_at);
+
+-- Направления и тренеры клиента
+CREATE TABLE IF NOT EXISTS client_disciplines (
+  client_id     UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  discipline_id UUID NOT NULL REFERENCES disciplines(id) ON DELETE CASCADE,
+  PRIMARY KEY (client_id, discipline_id)
+);
+CREATE TABLE IF NOT EXISTS client_trainers (
+  client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  trainer_id UUID NOT NULL REFERENCES trainers(id) ON DELETE CASCADE,
+  PRIMARY KEY (client_id, trainer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ct_trainer ON client_trainers(trainer_id);
+
+-- Зарплата тренера: либо процент от оплат, либо оклад + процент (расчёт — этап 6)
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS salary_mode  TEXT NOT NULL DEFAULT 'percent';  -- percent | salary_percent
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS salary_fixed NUMERIC(10,2) NOT NULL DEFAULT 0; -- оклад в месяц
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS percent      NUMERIC(5,2)  NOT NULL DEFAULT 0; -- процент от оплат
+
+-- Каталог тарифов. Базовая цена + отдельные цены по филиалам (таблица ниже).
+CREATE TABLE IF NOT EXISTS subscription_types (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  kind          TEXT NOT NULL DEFAULT 'sessions',  -- sessions | unlimited
+  sessions      INT  NOT NULL DEFAULT 0,
+  days          INT  NOT NULL DEFAULT 30,
+  price         NUMERIC(10,2) NOT NULL DEFAULT 0,  -- базовая цена (если у филиала нет своей)
+  discipline_id UUID REFERENCES disciplines(id) ON DELETE SET NULL,
+  training_type TEXT NOT NULL DEFAULT 'group',     -- group | personal
+  active        BOOLEAN NOT NULL DEFAULT true
+);
+
+-- Цены тарифа по филиалам («в каждом филиале разные цены»)
+CREATE TABLE IF NOT EXISTS subscription_type_prices (
+  sub_type_id UUID NOT NULL REFERENCES subscription_types(id) ON DELETE CASCADE,
+  branch_id   UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+  price       NUMERIC(10,2) NOT NULL,
+  PRIMARY KEY (sub_type_id, branch_id)
+);
+
+-- Выданные абонементы
+CREATE TABLE IF NOT EXISTS client_subscriptions (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id      UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  sub_type_id    UUID REFERENCES subscription_types(id) ON DELETE SET NULL,
+  name           TEXT NOT NULL,
+  kind           TEXT NOT NULL,                     -- sessions | unlimited
+  training_type  TEXT NOT NULL DEFAULT 'group',
+  sessions_total INT  NOT NULL DEFAULT 0,
+  sessions_used  INT  NOT NULL DEFAULT 0,
+  price          NUMERIC(10,2) NOT NULL DEFAULT 0,  -- итоговая цена (после скидки/баллов/своей цены)
+  paid           NUMERIC(10,2) NOT NULL DEFAULT 0,  -- сколько оплачено (меньше цены = долг)
+  purchase_date  DATE NOT NULL DEFAULT CURRENT_DATE,
+  expiry_date    DATE NOT NULL,
+  branch_id      UUID REFERENCES branches(id) ON DELETE SET NULL,
+  trainer_id     UUID REFERENCES trainers(id) ON DELETE SET NULL,
+  status         TEXT NOT NULL DEFAULT 'active'     -- active | pending (оформлен из кабинета, ждёт оплаты)
+);
+CREATE INDEX IF NOT EXISTS idx_subs_client ON client_subscriptions(client_id);
+
+-- Оплаты и возвраты
+CREATE TABLE IF NOT EXISTS payments (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id      UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  client_sub_id  UUID REFERENCES client_subscriptions(id) ON DELETE SET NULL,
+  amount         NUMERIC(10,2) NOT NULL,
+  method         TEXT NOT NULL DEFAULT 'наличные',  -- наличные | перевод | расчётный счёт | онлайн | бонусы
+  status         TEXT NOT NULL DEFAULT 'succeeded', -- pending | succeeded | canceled
+  op_type        TEXT NOT NULL DEFAULT 'payment',   -- payment (приход) | refund (возврат)
+  counts_revenue BOOLEAN NOT NULL DEFAULT true,     -- бонусы не считаются доходом
+  provider       TEXT,                              -- yookassa и т.п.
+  provider_id    TEXT,                              -- id платежа в ЮKassa
+  payer          TEXT NOT NULL DEFAULT '',          -- кто оплатил (родитель и т.п.)
+  note           TEXT NOT NULL DEFAULT '',
+  branch_id      UUID REFERENCES branches(id) ON DELETE SET NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_payments_cli ON payments(client_id);
+CREATE INDEX IF NOT EXISTS idx_payments_at  ON payments(created_at);

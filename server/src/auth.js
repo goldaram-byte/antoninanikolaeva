@@ -45,17 +45,3 @@ export const canAny = (...perms) => (req, res, next) => {
   if (p.__all || perms.some((k) => p[k])) return next();
   return res.status(403).json({ error: "Недостаточно прав" });
 };
-
-export function requireClient(req, res, next) {
-  const u = readToken(req);
-  if (!u || u.role !== "client") return res.status(401).json({ error: "Нужен вход клиента" });
-  req.user = u;
-  next();
-}
-
-// Авторизация контроллера СКУД по API-ключу (заголовок x-skud-key)
-export function requireSkud(req, res, next) {
-  const key = req.headers["x-skud-key"];
-  if (!key || key !== process.env.SKUD_API_KEY) return res.status(401).json({ error: "Неверный ключ СКУД" });
-  next();
-}

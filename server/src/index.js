@@ -5,7 +5,11 @@ import { join } from "node:path";
 
 import authRoutes from "./routes/auth.js";
 import catalogRoutes from "./routes/catalog.js";
-import meRoutes from "./routes/me.js";
+import branchesRoutes from "./routes/branches.js";
+import clientsRoutes from "./routes/clients.js";
+import subsRoutes from "./routes/subscriptions.js";
+import paymentsRoutes from "./routes/payments.js";
+import dashboardRoutes from "./routes/dashboard.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") || "*" }));
@@ -16,7 +20,11 @@ app.get("/health", (_req, res) => res.json({ ok: true, service: "karate-crm-serv
 
 app.use("/api/auth", authRoutes);
 app.use("/api/catalog", catalogRoutes);
-app.use("/api/me", meRoutes);
+app.use("/api/branches", branchesRoutes);
+app.use("/api/clients", clientsRoutes);
+app.use("/api/subscriptions", subsRoutes);
+app.use("/api/payments", paymentsRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // Прод-режим: один процесс отдаёт и API, и собранный фронтенд (SPA)
 if (process.env.CLIENT_DIST) {

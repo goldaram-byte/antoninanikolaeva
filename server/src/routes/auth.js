@@ -4,23 +4,6 @@ import { hash, verify, sign, employee, can } from "../auth.js";
 
 const r = Router();
 
-// Приводим телефон к единому виду: только цифры, ведущая 8 → 7 (для РФ).
-function normPhone(raw) {
-  let d = String(raw || "").replace(/\D/g, "");
-  if (d.length === 11 && d[0] === "8") d = "7" + d.slice(1);
-  return d;
-}
-
-// Поиск клиента по телефону в любом формате хранения (+7…, 8…, с пробелами)
-async function findClientByPhone(phone) {
-  const n = normPhone(phone);
-  if (!n) return null;
-  const { rows } = await q(
-    "SELECT * FROM clients WHERE regexp_replace(phone, '\\D', '', 'g') = $1 OR regexp_replace(phone, '\\D', '', 'g') = $2",
-    [n, n[0] === "7" ? "8" + n.slice(1) : n]);
-  return rows[0] || null;
-}
-
 // Создать сотрудника. Первый — свободно (станет владельцем), далее — только тот,
 // у кого есть право employees_manage.
 r.post("/admin/register", async (req, res, next) => {
@@ -58,42 +41,6 @@ r.post("/admin/login", async (req, res, next) => {
       perms: a.is_protected ? { __all: true } : (a.permissions || {}),
       isOwner: !!a.is_protected,
     });
-  } catch (e) { next(e); }
-});
-
-r.post("/client/login", async (req, res, next) => {
-  try {
-    const { phone, password } = req.body;
-    const c = await findClientByPhone(phone);
-    if (!c || !(await verify(password, c.password_hash)))
-      return res.status(401).json({ error: "Неверный телефон или пароль" });
-    res.json({ token: sign({ id: c.id, role: "client", name: c.name }), name: c.name });
-  } catch (e) { next(e); }
-});
-
-// Проверка: можно ли зарегистрироваться по этому телефону.
-// Регистрация доступна ТОЛЬКО тем, кто уже есть в базе клиентов и ещё не задал пароль.
-r.post("/client/check", async (req, res, next) => {
-  try {
-    if (!normPhone(req.body?.phone)) return res.status(400).json({ error: "Укажите телефон" });
-    const c = await findClientByPhone(req.body.phone);
-    if (!c) return res.json({ found: false });                       // нет в базе — регистрация недоступна
-    if (c.password_hash) return res.json({ found: true, has_password: true });
-    const masked = c.name ? c.name.trim().split(/\s+/).map((w) => w[0] + "***").join(" ") : "";
-    res.json({ found: true, has_password: false, name_hint: masked });
-  } catch (e) { next(e); }
-});
-
-// Клиент сам задаёт себе пароль (первичная регистрация)
-r.post("/client/register", async (req, res, next) => {
-  try {
-    const password = String(req.body?.password || "");
-    if (!normPhone(req.body?.phone) || password.length < 4) return res.status(400).json({ error: "Пароль не короче 4 символов" });
-    const c = await findClientByPhone(req.body.phone);
-    if (!c) return res.status(404).json({ error: "Этот номер не найден в базе школы. Обратитесь к администратору." });
-    if (c.password_hash) return res.status(409).json({ error: "Пароль уже задан. Войдите или обратитесь к администратору для сброса." });
-    await q("UPDATE clients SET password_hash=$1 WHERE id=$2", [await hash(password), c.id]);
-    res.json({ token: sign({ id: c.id, role: "client", name: c.name }), name: c.name });
   } catch (e) { next(e); }
 });
 
