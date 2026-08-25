@@ -131,12 +131,12 @@ export default function Finance() {
 
       {tab === "debtors" && (
         !debtors ? <Spinner /> : (
-          <Panel title="Должники — абонемент выдан, но не оплачен полностью">
+          <Panel title="Должники">
             {debtors.length === 0 ? <Empty text="Долгов нет — отлично!" />
               : <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-sm">
+                <table className="w-full min-w-[680px] text-sm">
                   <thead className="text-left text-xs uppercase tracking-wide text-slate-400">
-                    <tr><th className="py-2 pr-4">Клиент</th><th className="py-2 pr-4">Филиал</th><th className="py-2 pr-4">Что не оплачено</th><th className="py-2 pr-4">С какого числа</th><th className="py-2 text-right">Долг</th></tr>
+                    <tr><th className="py-2 pr-4">Клиент</th><th className="py-2 pr-4">Филиал</th><th className="py-2 pr-4">Причина</th><th className="py-2 pr-4">С какого числа</th><th className="py-2 text-right">Долг</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {debtors.map((d) => (
@@ -146,15 +146,23 @@ export default function Finance() {
                           {d.phone && <span className="block text-xs text-slate-400">{d.phone}</span>}
                         </td>
                         <td className="py-2.5 pr-4 text-slate-500">{d.branch_name || "—"}</td>
-                        <td className="py-2.5 pr-4 text-slate-500">{d.what}</td>
-                        <td className="py-2.5 pr-4 text-slate-500">{fmtDate(d.since)}</td>
-                        <td className="py-2.5 text-right font-semibold text-red-600">{money(d.debt, currency)}</td>
+                        <td className="py-2.5 pr-4 text-slate-500">
+                          {d.what && <div>не оплачено: {d.what}</div>}
+                          {d.unpaid_month && (
+                            <div className="text-amber-600">
+                              в группе, но месяц не оплачен{d.groups ? ` (${d.groups})` : ""}
+                              {d.visits_month > 0 ? ` · был ${d.visits_month} раз в этом месяце` : ""}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 pr-4 text-slate-500">{d.since ? fmtDate(d.since) : (d.last_expiry ? `аб. до ${fmtDate(d.last_expiry)}` : "—")}</td>
+                        <td className="py-2.5 text-right font-semibold text-red-600">{Number(d.debt) > 0 ? money(d.debt, currency) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>}
-            <p className="mt-3 text-xs text-slate-400">Правило «закреплён в группе, но не оплатил месяц до 5 числа» включится на этапе 3 вместе с группами.</p>
+            <p className="mt-3 text-xs text-slate-400">Сюда попадают: 1) абонемент выдан, но оплачен не полностью; 2) клиент закреплён в группе, а после 5 числа у него нет действующего абонемента.</p>
           </Panel>
         )
       )}

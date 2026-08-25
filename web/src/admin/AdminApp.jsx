@@ -13,6 +13,9 @@ import ClientDetail from "./ClientDetail.jsx";
 import Subs from "./Subs.jsx";
 import Finance from "./Finance.jsx";
 import SettingsScreen from "./Settings.jsx";
+import Schedule from "./Schedule.jsx";
+import Journal from "./Journal.jsx";
+import PersonalJournal from "./PersonalJournal.jsx";
 
 // Разделы админки. stage — на каком этапе раздел появится (до этого — заглушка).
 const nav = [
@@ -20,9 +23,9 @@ const nav = [
   { to: "/admin/clients", label: "Клиенты", icon: Users, perm: "clients_view" },
   { to: "/admin/funnel", label: "Воронка продаж", icon: ClipboardList, perm: "leads_manage", stage: 5 },
   { to: "/admin/tasks", label: "Задачи", icon: ListChecks, perm: "clients_view", stage: 5 },
-  { to: "/admin/schedule", label: "Расписание", icon: CalendarDays, perm: "schedule_view", stage: 3 },
-  { to: "/admin/journal", label: "Посещаемость", icon: ClipboardCheck, perm: "attendance_view", stage: 3 },
-  { to: "/admin/personal", label: "Журнал записи", icon: CalendarClock, perm: "schedule_view", stage: 3 },
+  { to: "/admin/schedule", label: "Расписание", icon: CalendarDays, perm: "schedule_view" },
+  { to: "/admin/journal", label: "Посещаемость", icon: ClipboardCheck, perm: "attendance_view" },
+  { to: "/admin/personal", label: "Журнал записи", icon: CalendarClock, perm: "schedule_view" },
   { to: "/admin/subs", label: "Абонементы", icon: Ticket, perm: "subs_manage" },
   { to: "/admin/finance", label: "Оплаты и долги", icon: Wallet, perm: "finance_view" },
   { to: "/admin/salary", label: "Зарплата", icon: Wallet, perm: "reports_salary", stage: 5 },
@@ -98,6 +101,9 @@ export default function AdminApp() {
               <Route path="subs" element={<Subs />} />
               <Route path="finance" element={<Finance />} />
               <Route path="settings" element={<SettingsScreen />} />
+              <Route path="schedule" element={<Schedule />} />
+              <Route path="journal" element={<Journal />} />
+              <Route path="personal" element={<PersonalJournal />} />
               {nav.filter((n) => n.stage).map((n) => (
                 <Route key={n.to} path={n.to.replace("/admin/", "")} element={<Stub label={n.label} stage={n.stage} />} />
               ))}

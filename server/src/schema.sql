@@ -177,3 +177,76 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS idx_payments_cli ON payments(client_id);
 CREATE INDEX IF NOT EXISTS idx_payments_at  ON payments(created_at);
+
+-- ==================== ЭТАП 3: РАСПИСАНИЕ, ПОСЕЩАЕМОСТЬ, ЖУРНАЛ ЗАПИСИ ====================
+
+-- Недельное расписание занятий (по филиалам)
+CREATE TABLE IF NOT EXISTS sessions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id     UUID REFERENCES branches(id) ON DELETE CASCADE,
+  discipline_id UUID REFERENCES disciplines(id) ON DELETE SET NULL,
+  trainer_id    UUID REFERENCES trainers(id) ON DELETE SET NULL,
+  title         TEXT NOT NULL DEFAULT '',
+  day_of_week   INT  NOT NULL,                     -- 0=Пн .. 6=Вс
+  start_time    TEXT NOT NULL,                     -- 'HH:MM'
+  end_time      TEXT NOT NULL,
+  capacity      INT  NOT NULL DEFAULT 12,
+  room          TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_branch ON sessions(branch_id, day_of_week);
+
+-- Разовые изменения ОДНОГО занятия на конкретную дату (отмена или перенос).
+-- Изменение всей серии — обычное редактирование строки sessions.
+CREATE TABLE IF NOT EXISTS session_exceptions (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  date       DATE NOT NULL,
+  kind       TEXT NOT NULL DEFAULT 'cancelled',  -- cancelled | moved
+  new_start  TEXT,                                -- новое время при переносе
+  new_end    TEXT,
+  note       TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sess_exc ON session_exceptions(session_id, date);
+
+-- Закрепление клиента за группой (занятием расписания)
+CREATE TABLE IF NOT EXISTS client_sessions (
+  client_id  UUID NOT NULL REFERENCES clients(id)  ON DELETE CASCADE,
+  session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  PRIMARY KEY (client_id, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cs_session ON client_sessions(session_id);
+
+-- Посещаемость и разовые записи на групповые занятия.
+-- «был» списывает занятие с подходящего абонемента (client_sub_id), снятие отметки возвращает.
+CREATE TABLE IF NOT EXISTS bookings (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id     UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  session_id    UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  date          DATE NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'booked',    -- booked | attended | noshow | cancelled
+  client_sub_id UUID REFERENCES client_subscriptions(id) ON DELETE SET NULL,
+  no_sub        BOOLEAN NOT NULL DEFAULT false,    -- был, но подходящего абонемента не нашлось (долг)
+  marked_by     TEXT NOT NULL DEFAULT '',          -- кто отметил (тренер/администратор)
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (client_id, session_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_bookings_sess ON bookings(session_id, date);
+CREATE INDEX IF NOT EXISTS idx_bookings_client ON bookings(client_id, date);
+
+-- Журнал записи персональных тренировок
+CREATE TABLE IF NOT EXISTS personal_bookings (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  branch_id     UUID REFERENCES branches(id) ON DELETE SET NULL,
+  trainer_id    UUID REFERENCES trainers(id) ON DELETE CASCADE,
+  client_id     UUID REFERENCES clients(id) ON DELETE CASCADE,
+  date          DATE NOT NULL,
+  start_time    TEXT NOT NULL,                       -- 'HH:MM'
+  end_time      TEXT NOT NULL DEFAULT '',
+  status        TEXT NOT NULL DEFAULT 'booked',      -- booked | attended | noshow | cancelled
+  client_sub_id UUID REFERENCES client_subscriptions(id) ON DELETE SET NULL,
+  note          TEXT NOT NULL DEFAULT '',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_personal_date ON personal_bookings(date, branch_id);
+CREATE INDEX IF NOT EXISTS idx_personal_trainer ON personal_bookings(trainer_id, date);

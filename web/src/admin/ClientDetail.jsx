@@ -7,6 +7,7 @@ import { Header, Panel, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnG
 import { ClientForm } from "./Clients.jsx";
 import BuyModal from "./BuyModal.jsx";
 import PaymentModal from "./PaymentModal.jsx";
+import { WEEKDAYS } from "./Schedule.jsx";
 
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join(".") : "—");
 
@@ -21,6 +22,7 @@ export default function ClientDetail() {
   const [edit, setEdit] = useState(false);
   const [buy, setBuy] = useState(false);
   const [pay, setPay] = useState(null);          // абонемент, по которому принимаем оплату (или null)
+  const [groups, setGroups] = useState(false);   // окно выбора групп
 
   const load = useCallback(async () => setC(await api.get(`/api/clients/${id}`)), [id]);
   useEffect(() => {
@@ -64,9 +66,21 @@ export default function ClientDetail() {
       {c.referredByName && <p className="text-xs text-slate-400">Пригласил(а): {c.referredByName}</p>}
       {c.notes && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{c.notes}</p>}
 
-      {/* Группы — появятся вместе с расписанием */}
-      <Panel title="Группы (расписание)">
-        <Empty text="Привязка к группам появится на этапе 3 вместе с расписанием." />
+      {/* Группы, за которыми закреплён клиент */}
+      <Panel title="Группы (расписание)"
+        action={hasPerm("clients_edit") ? <button className={btnGhost} onClick={() => setGroups(true)}>Изменить</button> : null}>
+        {(c.groups || []).length === 0 ? <Empty text="Клиент не закреплён ни за одной группой." />
+          : <ul className="divide-y divide-slate-100 text-sm">
+            {c.groups.map((g) => (
+              <li key={g.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="w-8 font-semibold text-slate-700">{WEEKDAYS[g.day_of_week]}</span>
+                <span className="tabular-nums text-slate-600">{g.start_time}–{g.end_time}</span>
+                <span className="font-medium text-slate-800">{g.title || g.discipline_name || "Занятие"}</span>
+                {g.branch_name && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{g.branch_name}</span>}
+                {g.trainer_name && <span className="text-xs text-slate-400">{g.trainer_name}</span>}
+              </li>
+            ))}
+          </ul>}
       </Panel>
 
       {/* Абонементы */}
@@ -127,11 +141,24 @@ export default function ClientDetail() {
           </ul>}
       </Panel>
 
-      {/* История посещений */}
+      {/* История посещений (групповые + персональные) */}
       <Panel title="История посещений">
         {(c.visits || []).length === 0
-          ? <div className="flex items-center gap-2 py-6 text-sm text-slate-400"><ClipboardCheck size={16} /> Посещения появятся на этапе 3 вместе с расписанием и отметкой посещаемости.</div>
-          : null}
+          ? <div className="flex items-center gap-2 py-6 text-sm text-slate-400"><ClipboardCheck size={16} /> Посещений пока не было.</div>
+          : <ul className="divide-y divide-slate-100 text-sm">
+            {c.visits.map((v, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-3 py-2">
+                <span className="w-24 shrink-0 text-slate-500">{fmtDate(v.date)}</span>
+                <span className="tabular-nums text-slate-500">{v.start_time}</span>
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{v.title}</span>
+                {v.kind === "personal" && <span className="rounded bg-purple-50 px-1.5 py-0.5 text-[11px] text-purple-600">персон.</span>}
+                {v.no_sub && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-600">без абонемента</span>}
+                {v.status === "attended" ? <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600">был</span>
+                  : v.status === "noshow" ? <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">не пришёл</span>
+                  : <span className="rounded bg-sky-50 px-2 py-0.5 text-xs text-sky-600">запись</span>}
+              </li>
+            ))}
+          </ul>}
       </Panel>
 
       {/* История баллов */}
@@ -155,7 +182,36 @@ export default function ClientDetail() {
         onClose={() => setBuy(false)} onDone={() => { setBuy(false); load(); }} />}
       {pay && <PaymentModal client={c} sub={pay.id ? pay : null}
         onClose={() => setPay(null)} onDone={() => { setPay(null); load(); }} />}
+      {groups && <GroupsModal client={c} onClose={() => setGroups(false)} onSaved={() => { setGroups(false); load(); }} />}
     </div>
+  );
+}
+
+// Выбор групп расписания, за которыми закреплён клиент
+function GroupsModal({ client, onClose, onSaved }) {
+  const [sessions, setSessions] = useState([]);
+  const [picked, setPicked] = useState((client.groups || []).map((g) => g.id));
+  useEffect(() => { api.get("/api/schedule").then(setSessions).catch(() => {}); }, []);
+  const toggle = (id) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const save = async () => { await api.put(`/api/clients/${client.id}/sessions`, { session_ids: picked }); onSaved(); };
+  return (
+    <Modal title="Группы клиента" onClose={onClose}
+      footer={<><button className={btnGhost} onClick={onClose}>Отмена</button><button className={btnPrimary} onClick={save}>Сохранить</button></>}>
+      {sessions.length === 0 ? <Empty text="В расписании пока нет занятий — создайте их в разделе «Расписание»." />
+        : <ul className="max-h-80 space-y-1.5 overflow-y-auto">
+          {sessions.map((s) => (
+            <li key={s.id}>
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-100 px-3 py-2 text-sm hover:bg-slate-50">
+                <input type="checkbox" className="h-4 w-4" checked={picked.includes(s.id)} onChange={() => toggle(s.id)} />
+                <span className="w-8 font-semibold text-slate-700">{WEEKDAYS[s.day_of_week]}</span>
+                <span className="tabular-nums text-slate-500">{s.start_time}</span>
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{s.title || s.discipline_name || "Занятие"}</span>
+                {s.branch_name && <span className="text-xs text-slate-400">{s.branch_name}</span>}
+              </label>
+            </li>
+          ))}
+        </ul>}
+    </Modal>
   );
 }
 

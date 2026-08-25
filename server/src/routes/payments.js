@@ -55,13 +55,14 @@ r.get("/summary", can("finance_view"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Должники. Правило этапа 2: абонемент выдан, но оплачен не полностью.
-// Правило «закреплён в группе, но не оплатил месяц до 5 числа» добавится на этапе 3 вместе с группами.
+// Должники. Два правила:
+// 1) абонемент выдан, но оплачен не полностью;
+// 2) закреплён в группе, но не оплатил месяц (после 5 числа нет действующего абонемента).
 r.get("/debtors", can("finance_view"), async (req, res, next) => {
   try {
     const own = ownTrainer(req);
     const branchId = req.query.branch_id || null;
-    const { rows } = await q(
+    const { rows: debts } = await q(
       `SELECT c.id, c.name, c.phone, b.name AS branch_name,
               sum(s.price - s.paid)::numeric AS debt,
               count(*)::int AS items,
@@ -75,7 +76,39 @@ r.get("/debtors", can("finance_view"), async (req, res, next) => {
          AND ($2::uuid IS NULL OR c.branch_id = $2)
        GROUP BY c.id, c.name, c.phone, b.name
        ORDER BY debt DESC, c.name`, [own, branchId]);
-    res.json(rows.map((x) => ({ ...x, debt: Number(x.debt) })));
+
+    const { rows: unpaid } = await q(
+      `SELECT c.id, c.name, c.phone, b.name AS branch_name,
+              (SELECT string_agg(COALESCE(NULLIF(ss.title,''), d.name, 'занятие'), ', ')
+                 FROM client_sessions cs JOIN sessions ss ON ss.id=cs.session_id
+                 LEFT JOIN disciplines d ON d.id=ss.discipline_id
+                WHERE cs.client_id=c.id) AS groups,
+              (SELECT count(*)::int FROM bookings bk
+                WHERE bk.client_id=c.id AND bk.status='attended' AND bk.date >= date_trunc('month', CURRENT_DATE)) AS visits_month,
+              (SELECT s2.expiry_date FROM client_subscriptions s2
+                WHERE s2.client_id=c.id ORDER BY s2.expiry_date DESC LIMIT 1) AS last_expiry
+       FROM clients c
+       LEFT JOIN branches b ON b.id=c.branch_id
+       WHERE EXTRACT(DAY FROM CURRENT_DATE) >= 5
+         AND EXISTS (SELECT 1 FROM client_sessions cs WHERE cs.client_id=c.id)
+         AND NOT EXISTS (
+           SELECT 1 FROM client_subscriptions s
+           WHERE s.client_id=c.id AND s.status='active'
+             AND s.expiry_date >= CURRENT_DATE
+             AND (s.kind='unlimited' OR s.sessions_used < s.sessions_total))
+         AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$1))
+         AND ($2::uuid IS NULL OR c.branch_id = $2)`, [own, branchId]);
+
+    // Сводим: клиент может и иметь долг, и не оплатить месяц
+    const map = new Map();
+    for (const d of debts) map.set(d.id, { ...d, debt: Number(d.debt), unpaid_month: false });
+    for (const u of unpaid) {
+      const ex = map.get(u.id);
+      if (ex) Object.assign(ex, { unpaid_month: true, groups: u.groups, visits_month: u.visits_month, last_expiry: u.last_expiry });
+      else map.set(u.id, { ...u, debt: 0, items: 0, unpaid_month: true });
+    }
+    const rows = [...map.values()].sort((a, b) => (b.debt - a.debt) || a.name.localeCompare(b.name, "ru"));
+    res.json(rows);
   } catch (e) { next(e); }
 });
 

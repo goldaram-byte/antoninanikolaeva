@@ -58,8 +58,30 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
     const trainers = (await q("SELECT t.* FROM client_trainers ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=$1", [c.id])).rows;
     const loyalty = (await q("SELECT points, reason, created_at FROM loyalty_transactions WHERE client_id=$1 ORDER BY created_at DESC LIMIT 20", [c.id])).rows;
     const referredByName = c.referred_by ? (await q("SELECT name FROM clients WHERE id=$1", [c.referred_by])).rows[0]?.name : null;
-    // История посещений появится на этапе 3 (таблица bookings) — пока пустой список
-    res.json({ ...c, subs, payments, disciplines, trainers, loyalty, referredByName, visits: [] });
+    // Группы, за которыми закреплён клиент
+    const groups = (await q(
+      `SELECT s.id, s.title, s.day_of_week, s.start_time, s.end_time,
+              d.name AS discipline_name, t.name AS trainer_name, b.name AS branch_name
+       FROM client_sessions cs JOIN sessions s ON s.id=cs.session_id
+       LEFT JOIN disciplines d ON d.id=s.discipline_id
+       LEFT JOIN trainers t ON t.id=s.trainer_id
+       LEFT JOIN branches b ON b.id=s.branch_id
+       WHERE cs.client_id=$1 ORDER BY s.day_of_week, s.start_time`, [c.id])).rows;
+    // История посещений: групповые + персональные, свежие сверху
+    const visits = (await q(
+      `SELECT b.date, b.status, b.no_sub, COALESCE(NULLIF(s.title,''), d.name, 'Занятие') AS title,
+              s.start_time, 'group' AS kind, t.name AS trainer_name
+       FROM bookings b JOIN sessions s ON s.id=b.session_id
+       LEFT JOIN disciplines d ON d.id=s.discipline_id
+       LEFT JOIN trainers t ON t.id=s.trainer_id
+       WHERE b.client_id=$1
+       UNION ALL
+       SELECT p.date, p.status, false AS no_sub, 'Персональная тренировка' AS title,
+              p.start_time, 'personal' AS kind, t.name AS trainer_name
+       FROM personal_bookings p LEFT JOIN trainers t ON t.id=p.trainer_id
+       WHERE p.client_id=$1
+       ORDER BY date DESC, start_time DESC LIMIT 60`, [c.id])).rows;
+    res.json({ ...c, subs, payments, disciplines, trainers, loyalty, referredByName, groups, visits });
   } catch (e) { next(e); }
 });
 
@@ -109,6 +131,18 @@ r.put("/:id", can("clients_edit"), async (req, res, next) => {
 r.delete("/:id", can("clients_edit"), async (req, res, next) => {
   try { await q("DELETE FROM clients WHERE id=$1", [req.params.id]); res.json({ ok: true }); }
   catch (e) { next(e); }
+});
+
+// Привязка клиента к группам расписания (задать весь список)
+r.put("/:id/sessions", can("clients_edit"), async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.session_ids) ? req.body.session_ids : [];
+    await tx(async (c) => {
+      await c.query("DELETE FROM client_sessions WHERE client_id=$1", [req.params.id]);
+      for (const sid of ids) if (sid) await c.query("INSERT INTO client_sessions(client_id,session_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [req.params.id, sid]);
+    });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 export default r;
