@@ -36,11 +36,13 @@ export default function Dashboard() {
         } />
 
       {!data ? <Spinner /> : <>
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className={`grid gap-4 ${data.can_finance ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2"}`}>
           <Card icon={Users} label="Клиентов" value={data.clients} tone="text-blue-500" />
           <Card icon={Ticket} label="Активных абонементов" value={data.active_subs} tone="text-emerald-500" />
-          <Card icon={Wallet} label="Выручка за месяц" value={money(data.month_income, currency)} tone="text-brand" />
-          <Card icon={AlertCircle} label={`Долг (${data.debtors} чел.)`} value={money(data.debt, currency)} tone="text-red-500" />
+          {data.can_finance && <>
+            <Card icon={Wallet} label="Выручка за месяц" value={money(data.month_income, currency)} tone="text-brand" />
+            <Card icon={AlertCircle} label={`Долг (${data.debtors} чел.)`} value={money(data.debt, currency)} tone="text-red-500" />
+          </>}
         </div>
 
         {!branchId && data.byBranch.length > 0 && (
@@ -48,7 +50,8 @@ export default function Dashboard() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[520px] text-sm">
                 <thead className="text-left text-xs uppercase tracking-wide text-slate-400">
-                  <tr><th className="py-2 pr-4">Филиал</th><th className="py-2 pr-4">Клиентов</th><th className="py-2 pr-4">Абонементов</th><th className="py-2 pr-4">Выручка за месяц</th><th className="py-2">Долг</th></tr>
+                  <tr><th className="py-2 pr-4">Филиал</th><th className="py-2 pr-4">Клиентов</th><th className="py-2 pr-4">Абонементов</th>
+                    {data.can_finance && <><th className="py-2 pr-4">Выручка за месяц</th><th className="py-2">Долг</th></>}</tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.byBranch.map((b) => (
@@ -59,8 +62,10 @@ export default function Dashboard() {
                       </td>
                       <td className="py-2.5 pr-4">{b.clients}</td>
                       <td className="py-2.5 pr-4">{b.active_subs}</td>
-                      <td className="py-2.5 pr-4 font-medium text-emerald-600">{money(b.month_income, currency)}</td>
-                      <td className="py-2.5">{Number(b.debt) > 0 ? <span className="font-medium text-red-600">{money(b.debt, currency)}</span> : <span className="text-slate-300">—</span>}</td>
+                      {data.can_finance && <>
+                        <td className="py-2.5 pr-4 font-medium text-emerald-600">{money(b.month_income, currency)}</td>
+                        <td className="py-2.5">{Number(b.debt) > 0 ? <span className="font-medium text-red-600">{money(b.debt, currency)}</span> : <span className="text-slate-300">—</span>}</td>
+                      </>}
                     </tr>
                   ))}
                 </tbody>
@@ -69,7 +74,7 @@ export default function Dashboard() {
           </Panel>
         )}
 
-        <Panel title="Последние оплаты" action={<Link to="/admin/finance" className="text-sm text-brand hover:underline">все</Link>}>
+        {data.can_finance && <Panel title="Последние оплаты" action={<Link to="/admin/finance" className="text-sm text-brand hover:underline">все</Link>}>
           {data.lastPayments.length === 0 ? <Empty text="Оплат пока не было." />
             : <ul className="divide-y divide-slate-100">
               {data.lastPayments.map((p) => (
@@ -82,7 +87,7 @@ export default function Dashboard() {
                 </li>
               ))}
             </ul>}
-        </Panel>
+        </Panel>}
       </>}
     </div>
   );

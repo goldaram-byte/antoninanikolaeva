@@ -18,6 +18,7 @@ import funnelRoutes from "./routes/funnel.js";
 import tasksRoutes from "./routes/tasks.js";
 import salaryRoutes from "./routes/salary.js";
 import importRoutes from "./routes/import.js";
+import employeesRoutes from "./routes/employees.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") || "*" }));
@@ -41,6 +42,7 @@ app.use("/api/funnel", funnelRoutes);
 app.use("/api/tasks", tasksRoutes);
 app.use("/api/salary", salaryRoutes);
 app.use("/api/import", importRoutes);
+app.use("/api/employees", employeesRoutes);
 
 // Прод-режим: один процесс отдаёт и API, и собранный фронтенд (SPA)
 if (process.env.CLIENT_DIST) {

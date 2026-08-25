@@ -2,7 +2,7 @@ import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import {
   LayoutDashboard, Users, CalendarDays, ClipboardCheck, Ticket, Wallet,
-  Settings as SettingsIcon, LogOut, Gift, ClipboardList, CalendarClock, Menu, ListChecks, Hourglass,
+  Settings as SettingsIcon, LogOut, Gift, ClipboardList, CalendarClock, Menu, ListChecks, Hourglass, KeyRound,
 } from "lucide-react";
 import { clearSession, hasPerm, roleName } from "../api.js";
 import { SettingsProvider } from "../settings.jsx";
@@ -17,6 +17,7 @@ import Schedule from "./Schedule.jsx";
 import Journal from "./Journal.jsx";
 import PersonalJournal from "./PersonalJournal.jsx";
 import Loyalty from "./Loyalty.jsx";
+import { MyPasswordModal } from "./Employees.jsx";
 import Funnel from "./Funnel.jsx";
 import Tasks from "./Tasks.jsx";
 import Salary from "./Salary.jsx";
@@ -54,6 +55,7 @@ export default function AdminApp() {
   const name = localStorage.getItem("name");
   const visible = nav.filter((n) => (!n.perm || hasPerm(n.perm)) && (!n.anyPerm || n.anyPerm.some(hasPerm)));
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pwdOpen, setPwdOpen] = useState(false);
 
   const linkCls = ({ isActive }) =>
     `flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${isActive ? "bg-brand text-white" : "text-slate-300 hover:bg-white/10 hover:text-white"}`;
@@ -93,6 +95,8 @@ export default function AdminApp() {
             </nav>
             <div className="border-t border-white/10 px-5 py-4">
               <div className="mb-2 text-xs text-slate-400">{name} · {roleName()}</div>
+              <button onClick={() => { setPwdOpen(true); setMenuOpen(false); }}
+                className="mb-2 flex items-center gap-2 text-sm text-slate-300 hover:text-white"><KeyRound size={16} /> Сменить пароль</button>
               <button onClick={logout} className="flex items-center gap-2 text-sm text-slate-300 hover:text-white"><LogOut size={16} /> Выйти</button>
             </div>
           </aside>
@@ -118,6 +122,7 @@ export default function AdminApp() {
             </Routes>
           </main>
         </div>
+        {pwdOpen && <MyPasswordModal onClose={() => setPwdOpen(false)} />}
       </div>
     </SettingsProvider>
   );

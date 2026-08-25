@@ -3,12 +3,14 @@ import { Plus, Trash2, Pencil } from "lucide-react";
 import { api, hasPerm } from "../api.js";
 import { useSettings } from "../settings.jsx";
 import { Header, Panel, Modal, Field, inputCls, btnPrimary, btnGhost } from "../ui.jsx";
+import Employees from "./Employees.jsx";
 
 export default function Settings() {
   return (
     <div className="space-y-5">
-      <Header title="Настройки" subtitle="Школа, филиалы, тренеры, направления, бонусы" />
+      <Header title="Настройки" subtitle="Школа, филиалы, сотрудники, тренеры, направления, бонусы" />
       {hasPerm("settings_manage") && <General />}
+      {hasPerm("employees_manage") && <Employees />}
       {hasPerm("settings_manage") && <Branches />}
       {(hasPerm("employees_manage") || hasPerm("settings_manage")) && <Trainers />}
       {hasPerm("settings_manage") && <Disciplines />}
