@@ -8,6 +8,9 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;       // внешние домены — мимо
   if (url.pathname.startsWith("/api/")) return;          // API всегда из сети
+  // Переходы по страницам — всегда из сети (иначе после обновления системы
+  // у сотрудника открывалась бы старая версия из кэша)
+  if (req.mode === "navigate") return;
   e.respondWith(
     fetch(req)
       .then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}); return res; })
