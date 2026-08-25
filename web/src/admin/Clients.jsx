@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Pencil } from "lucide-react";
+import { Plus, Search, Pencil, Upload } from "lucide-react";
 import { api, hasPerm } from "../api.js";
 import { useSettings } from "../settings.jsx";
 import { Header, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
+import ImportModal from "./ImportModal.jsx";
 
 export default function Clients() {
   const { currency } = useSettings();
@@ -15,6 +16,7 @@ export default function Clients() {
   const [fBranch, setFBranch] = useState("");
   const [fTrainer, setFTrainer] = useState("");
   const [edit, setEdit] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const load = async () => {
     const params = new URLSearchParams();
@@ -33,7 +35,12 @@ export default function Clients() {
   return (
     <div className="space-y-5">
       <Header title="Клиенты" subtitle={list ? `${list.length} в выборке` : ""}
-        action={hasPerm("clients_edit") ? <button className={btnPrimary} onClick={() => setEdit({})}><Plus size={16} /> Новый клиент</button> : null} />
+        action={hasPerm("clients_edit") ? (
+          <div className="flex gap-2">
+            <button className={btnGhost} onClick={() => setImportOpen(true)}><Upload size={15} /> Импорт</button>
+            <button className={btnPrimary} onClick={() => setEdit({})}><Plus size={16} /> Новый клиент</button>
+          </div>
+        ) : null} />
 
       <div className="flex flex-wrap gap-3">
         <div className="relative min-w-[220px] flex-1">
@@ -75,6 +82,8 @@ export default function Clients() {
 
       {edit && <ClientForm client={edit} branches={branches} trainers={trainers} disc={disc}
         onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
+      {importOpen && <ImportModal branches={branches}
+        onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); load(); }} />}
     </div>
   );
 }

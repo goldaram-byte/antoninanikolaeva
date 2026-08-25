@@ -1,0 +1,167 @@
+import { Router } from "express";
+import multer from "multer";
+import ExcelJS from "exceljs";
+import iconv from "iconv-lite";
+import { q, tx } from "../db.js";
+import { employee, can } from "../auth.js";
+
+const r = Router();
+r.use(employee, can("clients_edit"));
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const refCode = () => "REF" + Math.random().toString(36).slice(2, 8).toUpperCase();
+
+// Ячейка Excel → строка (даты, формулы, форматированный текст)
+function cellToString(v) {
+  if (v == null) return "";
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v === "object") {
+    if (v.text) return String(v.text);
+    if (v.richText) return v.richText.map((t) => t.text).join("");
+    if (v.result != null) return cellToString(v.result);
+    if (v.hyperlink) return String(v.text || v.hyperlink);
+    return String(v);
+  }
+  return String(v).trim();
+}
+
+// Разбор файла (.xlsx или .csv) в таблицу строк
+async function parseTable(file) {
+  const name = (file.originalname || "").toLowerCase();
+  if (name.endsWith(".csv") || name.endsWith(".txt")) {
+    // русский Excel часто сохраняет CSV в кодировке Windows-1251
+    let text = file.buffer.toString("utf8");
+    if (text.includes("�")) text = iconv.decode(file.buffer, "win1251");
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+    const delim = (lines[0]?.split(";").length || 0) > (lines[0]?.split(",").length || 0) ? ";" : ",";
+    // простой CSV-разбор с поддержкой кавычек
+    const parseLine = (line) => {
+      const out = []; let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQ) {
+          if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+          else if (ch === '"') inQ = false;
+          else cur += ch;
+        } else if (ch === '"') inQ = true;
+        else if (ch === delim) { out.push(cur); cur = ""; }
+        else cur += ch;
+      }
+      out.push(cur);
+      return out.map((s) => s.trim());
+    };
+    return lines.map(parseLine);
+  }
+  // .xlsx
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(file.buffer);
+  const ws = wb.worksheets[0];
+  if (!ws) throw Object.assign(new Error("В файле нет листов"), { status: 400 });
+  const rows = [];
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    const vals = [];
+    for (let c = 1; c <= ws.columnCount; c++) vals.push(cellToString(row.getCell(c).value));
+    rows.push(vals);
+  });
+  return rows;
+}
+
+const normPhone = (raw) => {
+  let d = String(raw || "").replace(/\D/g, "");
+  if (d.length === 11 && d[0] === "8") d = "7" + d.slice(1);
+  return d;
+};
+
+function parseBirthdate(s) {
+  const t = String(s || "").trim();
+  if (!t) return null;
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);                    // 2015-04-30
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})$/);        // 30.04.2015 / 30/04/15
+  if (m) {
+    let y = m[3].length === 2 ? (Number(m[3]) > 30 ? "19" + m[3] : "20" + m[3]) : m[3];
+    return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  }
+  return null;
+}
+
+// Предпросмотр: заголовки и первые строки, чтобы настроить сопоставление колонок
+r.post("/clients/preview", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Файл не получен" });
+    const rows = await parseTable(req.file);
+    if (rows.length === 0) return res.status(400).json({ error: "Файл пустой" });
+    const width = Math.max(...rows.map((x) => x.length));
+    const headers = rows[0].concat(Array(Math.max(0, width - rows[0].length)).fill(""));
+    res.json({ headers, rows: rows.slice(1, 6), total: rows.length - 1 });
+  } catch (e) { res.status(e.status || 500).json({ error: "Не удалось прочитать файл: " + e.message }); }
+});
+
+// Импорт. mapping — JSON-массив по колонкам файла:
+//   name | phone | email | birthdate | discount | note | note_titled | skip
+// note_titled кладёт в заметки «Название колонки: значение» — так можно
+// импортировать любые дополнительные столбцы (группа, родитель, пояс и т.п.).
+r.post("/clients", upload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Файл не получен" });
+    let mapping;
+    try { mapping = JSON.parse(req.body.mapping || "[]"); } catch { mapping = []; }
+    if (!mapping.includes("name")) return res.status(400).json({ error: "Не выбрана колонка с именем клиента" });
+    const branchId = req.body.branch_id || null;
+    const skipDup = req.body.skip_duplicates !== "0";
+    const hasHeader = req.body.has_header !== "0";
+
+    const rows = await parseTable(req.file);
+    const data = hasHeader ? rows.slice(1) : rows;
+    const headers = hasHeader ? rows[0] : mapping.map((_, i) => `Колонка ${i + 1}`);
+
+    // телефоны, уже существующие в базе (для пропуска дубликатов)
+    const existing = new Set(
+      (await q("SELECT regexp_replace(coalesce(phone,''), '\\D', '', 'g') AS p FROM clients WHERE phone IS NOT NULL")).rows
+        .map((x) => (x.p.length === 11 && x.p[0] === "8" ? "7" + x.p.slice(1) : x.p))
+        .filter(Boolean));
+
+    let created = 0, skipped = 0;
+    const errors = [];
+    await tx(async (c) => {
+      for (let i = 0; i < data.length; i++) {
+        const row = data[i];
+        const rowNum = i + (hasHeader ? 2 : 1);
+        const get = (field) => {
+          const parts = [];
+          mapping.forEach((m, col) => { if (m === field && row[col] != null && String(row[col]).trim() !== "") parts.push(String(row[col]).trim()); });
+          return parts.join(" ");
+        };
+        const name = get("name");
+        if (!name) { if (row.some((x) => String(x || "").trim() !== "")) errors.push({ row: rowNum, reason: "нет имени" }); continue; }
+
+        const phoneRaw = get("phone");
+        const pn = normPhone(phoneRaw);
+        if (pn && existing.has(pn)) { if (skipDup) { skipped++; continue; } }
+        if (pn) existing.add(pn);
+
+        const noteParts = [];
+        mapping.forEach((m, col) => {
+          const v = String(row[col] ?? "").trim();
+          if (!v) return;
+          if (m === "note") noteParts.push(v);
+          if (m === "note_titled") noteParts.push(`${headers[col] || "Колонка " + (col + 1)}: ${v}`);
+        });
+
+        const discount = Number(String(get("discount")).replace(",", ".").replace(/[^\d.]/g, "")) || 0;
+        try {
+          await c.query(
+            `INSERT INTO clients(name, phone, email, birthdate, notes, branch_id, discount_percent, referral_code)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [name, phoneRaw || null, get("email") || null, parseBirthdate(get("birthdate")),
+             noteParts.join("; "), branchId, discount, refCode()]);
+          created++;
+        } catch (e) { errors.push({ row: rowNum, reason: e.message.slice(0, 80) }); }
+      }
+    });
+    res.json({ created, skipped, errors: errors.slice(0, 20), errors_total: errors.length });
+  } catch (e) { res.status(e.status || 500).json({ error: "Импорт не удался: " + e.message }); }
+});
+
+export default r;
