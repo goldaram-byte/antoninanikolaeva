@@ -104,8 +104,8 @@ export default function Schedule() {
 function SessionForm({ session, branches, trainers, disc, onClose, onSaved }) {
   const isNew = !session.id;
   const [f, setF] = useState({
-    title: "", branch_id: "", discipline_id: "", trainer_id: "",
-    start_time: "18:00", end_time: "19:00", capacity: 12, room: "", ...session,
+    title: "", start_time: "18:00", end_time: "19:00", capacity: 12, room: "", ...session,
+    // пустая строка вместо null — иначе <select> не выберет вариант «не выбран»
     branch_id: session.branch_id || "", discipline_id: session.discipline_id || "", trainer_id: session.trainer_id || "",
     days: isNew ? [] : [session.day_of_week],
   });
