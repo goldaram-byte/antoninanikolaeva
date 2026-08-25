@@ -250,3 +250,83 @@ CREATE TABLE IF NOT EXISTS personal_bookings (
 );
 CREATE INDEX IF NOT EXISTS idx_personal_date ON personal_bookings(date, branch_id);
 CREATE INDEX IF NOT EXISTS idx_personal_trainer ON personal_bookings(trainer_id, date);
+
+-- ==================== ЭТАП 5: ВОРОНКА, ЗАДАЧИ, ЗАРПЛАТА ====================
+
+-- Этапы воронки продаж
+CREATE TABLE IF NOT EXISTS funnel_stages (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       TEXT NOT NULL,
+  color      TEXT NOT NULL DEFAULT '#3b82f6',
+  sort       INT  NOT NULL DEFAULT 0,
+  is_won     BOOLEAN NOT NULL DEFAULT false,   -- терминальный успех («Пришёл»)
+  is_lost    BOOLEAN NOT NULL DEFAULT false,   -- терминальный отказ
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Этапы по умолчанию (создаются один раз)
+INSERT INTO funnel_stages (name, color, sort, is_won, is_lost)
+SELECT * FROM (VALUES
+  ('Новая',     '#3b82f6', 0, false, false),
+  ('Связались', '#f59e0b', 1, false, false),
+  ('Назначена', '#8b5cf6', 2, false, false),
+  ('Пришёл',    '#10b981', 3, true,  false),
+  ('Отказ',     '#94a3b8', 4, false, true )
+) AS v(name,color,sort,is_won,is_lost)
+WHERE NOT EXISTS (SELECT 1 FROM funnel_stages);
+
+-- Заявки / лиды
+CREATE TABLE IF NOT EXISTS leads (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  phone         TEXT,
+  branch_id     UUID REFERENCES branches(id) ON DELETE SET NULL,
+  discipline_id UUID REFERENCES disciplines(id) ON DELETE SET NULL,
+  comment       TEXT NOT NULL DEFAULT '',
+  -- КРИТИЧНО (урок образца): «кто пригласил» фиксируется в заявке и ПЕРЕНОСИТСЯ
+  -- в клиента при конверсии — иначе реферальные бонусы не начислятся.
+  referred_by   UUID REFERENCES clients(id) ON DELETE SET NULL,
+  stage_id      UUID REFERENCES funnel_stages(id) ON DELETE SET NULL,
+  client_id     UUID REFERENCES clients(id) ON DELETE SET NULL,  -- заполнен после конверсии
+  sort          INT NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_leads_stage ON leads(stage_id, sort);
+
+-- Примечания-история по лиду
+CREATE TABLE IF NOT EXISTS lead_notes (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id    UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  text       TEXT NOT NULL,
+  author     TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_lead_notes_lead ON lead_notes(lead_id, created_at DESC);
+
+-- Задачи/напоминания по лидам
+CREATE TABLE IF NOT EXISTS lead_tasks (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id    UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  title      TEXT NOT NULL,
+  due_date   DATE,
+  note       TEXT NOT NULL DEFAULT '',
+  done       BOOLEAN NOT NULL DEFAULT false,
+  done_at    TIMESTAMPTZ,
+  author     TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_lead_tasks_open ON lead_tasks(due_date) WHERE done = false;
+
+-- Задачи по клиентам
+CREATE TABLE IF NOT EXISTS client_tasks (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id  UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  title      TEXT NOT NULL,
+  due_date   DATE,
+  note       TEXT NOT NULL DEFAULT '',
+  done       BOOLEAN NOT NULL DEFAULT false,
+  done_at    TIMESTAMPTZ,
+  author     TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_client_tasks ON client_tasks(client_id, done, due_date);

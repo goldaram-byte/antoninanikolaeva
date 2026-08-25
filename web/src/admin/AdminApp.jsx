@@ -17,19 +17,22 @@ import Schedule from "./Schedule.jsx";
 import Journal from "./Journal.jsx";
 import PersonalJournal from "./PersonalJournal.jsx";
 import Loyalty from "./Loyalty.jsx";
+import Funnel from "./Funnel.jsx";
+import Tasks from "./Tasks.jsx";
+import Salary from "./Salary.jsx";
 
 // Разделы админки. stage — на каком этапе раздел появится (до этого — заглушка).
 const nav = [
   { to: "/admin", end: true, label: "Дашборд", icon: LayoutDashboard, perm: null },
   { to: "/admin/clients", label: "Клиенты", icon: Users, perm: "clients_view" },
-  { to: "/admin/funnel", label: "Воронка продаж", icon: ClipboardList, perm: "leads_manage", stage: 5 },
-  { to: "/admin/tasks", label: "Задачи", icon: ListChecks, perm: "clients_view", stage: 5 },
+  { to: "/admin/funnel", label: "Воронка продаж", icon: ClipboardList, perm: "leads_manage" },
+  { to: "/admin/tasks", label: "Задачи", icon: ListChecks, perm: "clients_view" },
   { to: "/admin/schedule", label: "Расписание", icon: CalendarDays, perm: "schedule_view" },
   { to: "/admin/journal", label: "Посещаемость", icon: ClipboardCheck, perm: "attendance_view" },
   { to: "/admin/personal", label: "Журнал записи", icon: CalendarClock, perm: "schedule_view" },
   { to: "/admin/subs", label: "Абонементы", icon: Ticket, perm: "subs_manage" },
   { to: "/admin/finance", label: "Оплаты и долги", icon: Wallet, perm: "finance_view" },
-  { to: "/admin/salary", label: "Зарплата", icon: Wallet, perm: "reports_salary", stage: 5 },
+  { to: "/admin/salary", label: "Зарплата", icon: Wallet, perm: "reports_salary" },
   { to: "/admin/loyalty", label: "Лояльность", icon: Gift, perm: "loyalty_view" },
   { to: "/admin/settings", label: "Настройки", icon: SettingsIcon, anyPerm: ["settings_manage", "employees_manage"] },
 ];
@@ -106,6 +109,9 @@ export default function AdminApp() {
               <Route path="journal" element={<Journal />} />
               <Route path="personal" element={<PersonalJournal />} />
               <Route path="loyalty" element={<Loyalty />} />
+              <Route path="funnel" element={<Funnel />} />
+              <Route path="tasks" element={<Tasks />} />
+              <Route path="salary" element={<Salary />} />
               {nav.filter((n) => n.stage).map((n) => (
                 <Route key={n.to} path={n.to.replace("/admin/", "")} element={<Stub label={n.label} stage={n.stage} />} />
               ))}

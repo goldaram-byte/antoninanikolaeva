@@ -14,6 +14,9 @@ import scheduleRoutes from "./routes/schedule.js";
 import attendanceRoutes from "./routes/attendance.js";
 import personalRoutes from "./routes/personal.js";
 import loyaltyRoutes from "./routes/loyalty.js";
+import funnelRoutes from "./routes/funnel.js";
+import tasksRoutes from "./routes/tasks.js";
+import salaryRoutes from "./routes/salary.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") || "*" }));
@@ -33,6 +36,9 @@ app.use("/api/schedule", scheduleRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/personal", personalRoutes);
 app.use("/api/loyalty", loyaltyRoutes);
+app.use("/api/funnel", funnelRoutes);
+app.use("/api/tasks", tasksRoutes);
+app.use("/api/salary", salaryRoutes);
 
 // Прод-режим: один процесс отдаёт и API, и собранный фронтенд (SPA)
 if (process.env.CLIENT_DIST) {
