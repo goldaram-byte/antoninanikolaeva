@@ -214,7 +214,7 @@ function Loyalty() {
         <label className="block"><span className="mb-1 block text-sm font-medium text-slate-600">Стоимость 1 балла, {currency}</span>
           <input type="number" className={inputCls} defaultValue={all.points_to_currency || "1"} onBlur={(e) => setSetting("points_to_currency", e.target.value)} /></label>
       </div>
-      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Баллы уже начисляются и списываются при выдаче абонементов. Отдельный раздел «Лояльность» с рейтингом приглашений появится на этапе 4.</p>
+      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Баллы начисляются и списываются при выдаче абонементов. Рейтинг приглашений и ручная корректировка баллов — в разделе «Лояльность».</p>
     </Panel>
   );
 }

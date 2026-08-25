@@ -16,6 +16,7 @@ import SettingsScreen from "./Settings.jsx";
 import Schedule from "./Schedule.jsx";
 import Journal from "./Journal.jsx";
 import PersonalJournal from "./PersonalJournal.jsx";
+import Loyalty from "./Loyalty.jsx";
 
 // Разделы админки. stage — на каком этапе раздел появится (до этого — заглушка).
 const nav = [
@@ -29,7 +30,7 @@ const nav = [
   { to: "/admin/subs", label: "Абонементы", icon: Ticket, perm: "subs_manage" },
   { to: "/admin/finance", label: "Оплаты и долги", icon: Wallet, perm: "finance_view" },
   { to: "/admin/salary", label: "Зарплата", icon: Wallet, perm: "reports_salary", stage: 5 },
-  { to: "/admin/loyalty", label: "Лояльность", icon: Gift, perm: "loyalty_view", stage: 4 },
+  { to: "/admin/loyalty", label: "Лояльность", icon: Gift, perm: "loyalty_view" },
   { to: "/admin/settings", label: "Настройки", icon: SettingsIcon, anyPerm: ["settings_manage", "employees_manage"] },
 ];
 
@@ -104,6 +105,7 @@ export default function AdminApp() {
               <Route path="schedule" element={<Schedule />} />
               <Route path="journal" element={<Journal />} />
               <Route path="personal" element={<PersonalJournal />} />
+              <Route path="loyalty" element={<Loyalty />} />
               {nav.filter((n) => n.stage).map((n) => (
                 <Route key={n.to} path={n.to.replace("/admin/", "")} element={<Stub label={n.label} stage={n.stage} />} />
               ))}
