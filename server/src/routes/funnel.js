@@ -11,6 +11,73 @@ r.get("/stages", async (_req, res, next) => {
   try { res.json((await q("SELECT * FROM funnel_stages ORDER BY sort")).rows); } catch (e) { next(e); }
 });
 
+// --- Этапы воронки: школа настраивает их под себя ---
+// Тип этапа: обычный, «успех» (сюда попадает заявка при конверсии в клиента)
+// или «отказ». Успешный и отказной этап может быть только один.
+async function setExclusiveFlags(c, id, isWon, isLost) {
+  if (isWon) await c.query("UPDATE funnel_stages SET is_won=false WHERE id<>$1", [id]);
+  if (isLost) await c.query("UPDATE funnel_stages SET is_lost=false WHERE id<>$1", [id]);
+}
+
+r.post("/stages", async (req, res, next) => {
+  try {
+    const name = String(req.body?.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Укажите название этапа" });
+    const isWon = !!req.body?.is_won, isLost = !!req.body?.is_lost;
+    const st = await tx(async (c) => {
+      const { rows: [{ mx }] } = await c.query("SELECT COALESCE(MAX(sort),-1)+1 AS mx FROM funnel_stages");
+      const { rows: [row] } = await c.query(
+        "INSERT INTO funnel_stages(name,color,sort,is_won,is_lost) VALUES($1,$2,$3,$4,$5) RETURNING *",
+        [name, req.body?.color || "#3b82f6", mx, isWon, isLost]);
+      await setExclusiveFlags(c, row.id, isWon, isLost);
+      return row;
+    });
+    res.json(st);
+  } catch (e) { next(e); }
+});
+
+r.put("/stages/:id", async (req, res, next) => {
+  try {
+    const name = req.body?.name === undefined ? null : String(req.body.name).trim();
+    if (name !== null && !name) return res.status(400).json({ error: "Название не может быть пустым" });
+    const isWon = req.body?.is_won === undefined ? null : !!req.body.is_won;
+    const isLost = req.body?.is_lost === undefined ? null : !!req.body.is_lost;
+    const st = await tx(async (c) => {
+      const { rows: [row] } = await c.query(
+        `UPDATE funnel_stages SET name=COALESCE($1,name), color=COALESCE($2,color),
+           is_won=COALESCE($3,is_won), is_lost=COALESCE($4,is_lost) WHERE id=$5 RETURNING *`,
+        [name, req.body?.color ?? null, isWon, isLost, req.params.id]);
+      if (row) await setExclusiveFlags(c, row.id, row.is_won, row.is_lost);
+      return row;
+    });
+    if (!st) return res.status(404).json({ error: "Этап не найден" });
+    res.json(st);
+  } catch (e) { next(e); }
+});
+
+// Порядок этапов слева направо
+r.post("/stages/reorder", async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    await tx(async (c) => {
+      for (let i = 0; i < ids.length; i++)
+        await c.query("UPDATE funnel_stages SET sort=$1 WHERE id=$2", [i, ids[i]]);
+    });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+r.delete("/stages/:id", async (req, res, next) => {
+  try {
+    const { rows: [{ cnt }] } = await q("SELECT count(*)::int AS cnt FROM leads WHERE stage_id=$1", [req.params.id]);
+    if (cnt > 0) return res.status(400).json({ error: `На этапе ${cnt} заявок — сначала перенесите их на другой этап` });
+    const { rows: [{ total }] } = await q("SELECT count(*)::int AS total FROM funnel_stages");
+    if (total <= 1) return res.status(400).json({ error: "Должен остаться хотя бы один этап" });
+    await q("DELETE FROM funnel_stages WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // Лиды (с фильтром по филиалу)
 r.get("/leads", async (req, res, next) => {
   try {

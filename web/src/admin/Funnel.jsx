@@ -1,10 +1,94 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Phone, ChevronLeft, ChevronRight, Trash2, UserCheck, ListChecks } from "lucide-react";
+import { Plus, Phone, ChevronLeft, ChevronRight, Trash2, UserCheck, ListChecks, Settings2, ArrowUp, ArrowDown } from "lucide-react";
 import { api } from "../api.js";
 import { Header, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost } from "../ui.jsx";
 
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join(".") : "—");
+
+// Настройка этапов воронки: добавить, переименовать, перекрасить,
+// поменять местами, назначить этап «успех»/«отказ», удалить пустой.
+function StagesModal({ stages, onClose, onChanged }) {
+  const [list, setList] = useState(stages);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState("#3b82f6");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = async () => { const st = await api.get("/api/funnel/stages"); setList(st); onChanged(); };
+  const run = async (fn) => {
+    setErr(""); setBusy(true);
+    try { await fn(); await refresh(); } catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const add = () => {
+    if (!name.trim()) return setErr("Введите название этапа");
+    run(async () => { await api.post("/api/funnel/stages", { name: name.trim(), color }); setName(""); });
+  };
+  const rename = (st, value) => {
+    if (!value.trim() || value.trim() === st.name) return;
+    run(() => api.put(`/api/funnel/stages/${st.id}`, { name: value.trim() }));
+  };
+  const setKind = (st, kind) =>
+    run(() => api.put(`/api/funnel/stages/${st.id}`, { is_won: kind === "won", is_lost: kind === "lost" }));
+  const move = (i, dir) => {
+    const next = [...list];
+    const j = i + dir;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    setList(next);
+    run(() => api.post("/api/funnel/stages/reorder", { ids: next.map((x) => x.id) }));
+  };
+  const remove = (st) => {
+    if (!confirm(`Удалить этап «${st.name}»?`)) return;
+    run(() => api.del(`/api/funnel/stages/${st.id}`));
+  };
+
+  return (
+    <Modal title="Этапы воронки" onClose={onClose}
+      footer={<button className={btnPrimary} onClick={onClose}>Готово</button>}>
+      <div className="space-y-3">
+        <div className="space-y-2">
+          {list.map((st, i) => (
+            <div key={st.id} className="flex items-center gap-2">
+              <input type="color" className="h-9 w-9 shrink-0 cursor-pointer rounded border border-slate-200"
+                value={st.color} onChange={(e) => run(() => api.put(`/api/funnel/stages/${st.id}`, { color: e.target.value }))} />
+              <input className={inputCls} defaultValue={st.name} onBlur={(e) => rename(st, e.target.value)} />
+              <select className={inputCls + " w-36 shrink-0"} value={st.is_won ? "won" : st.is_lost ? "lost" : "normal"}
+                onChange={(e) => setKind(st, e.target.value)}>
+                <option value="normal">обычный</option>
+                <option value="won">успех</option>
+                <option value="lost">отказ</option>
+              </select>
+              <button className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30" disabled={i === 0 || busy}
+                onClick={() => move(i, -1)} title="Левее"><ArrowUp size={15} /></button>
+              <button className="p-1 text-slate-400 hover:text-slate-700 disabled:opacity-30" disabled={i === list.length - 1 || busy}
+                onClick={() => move(i, 1)} title="Правее"><ArrowDown size={15} /></button>
+              <button className="p-1 text-slate-400 hover:text-red-600" disabled={busy}
+                onClick={() => remove(st)} title="Удалить"><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
+          <input type="color" className="h-9 w-9 shrink-0 cursor-pointer rounded border border-slate-200"
+            value={color} onChange={(e) => setColor(e.target.value)} />
+          <input className={inputCls} placeholder="Новый этап, например «Пробное занятие»"
+            value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} />
+          <button className={btnPrimary} disabled={busy} onClick={add}><Plus size={16} /> Добавить</button>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          Порядок этапов — как они идут слева направо на доске. «Успех» — этап, на который заявка
+          попадает при кнопке «Сделать клиентом» (такой этап один), «отказ» — этап потерянных заявок.
+          Удалить можно только пустой этап: сначала перенесите заявки.
+        </p>
+        {err && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{err}</div>}
+      </div>
+    </Modal>
+  );
+}
 
 // Воронка продаж: заявки → этапы → конверсия в клиента одним действием
 // (с переносом «кто пригласил» и направления — критичное требование ТЗ).
@@ -16,6 +100,7 @@ export default function Funnel() {
   const [fBranch, setFBranch] = useState("");
   const [add, setAdd] = useState(false);
   const [openLead, setOpenLead] = useState(null);
+  const [stagesOpen, setStagesOpen] = useState(false);
 
   const load = useCallback(async () => {
     const p = fBranch ? `?branch_id=${fBranch}` : "";
@@ -39,7 +124,12 @@ export default function Funnel() {
   return (
     <div className="space-y-5">
       <Header title="Воронка продаж" subtitle="Заявки и лиды по этапам"
-        action={<button className={btnPrimary} onClick={() => setAdd(true)}><Plus size={16} /> Заявка</button>} />
+        action={
+          <div className="flex gap-2">
+            <button className={btnGhost} onClick={() => setStagesOpen(true)}><Settings2 size={15} /> Этапы</button>
+            <button className={btnPrimary} onClick={() => setAdd(true)}><Plus size={16} /> Заявка</button>
+          </div>
+        } />
 
       <select className={inputCls + " w-auto"} value={fBranch} onChange={(e) => setFBranch(e.target.value)}>
         <option value="">Все филиалы</option>
@@ -86,6 +176,7 @@ export default function Funnel() {
         </div>
       )}
 
+      {stagesOpen && <StagesModal stages={stages} onClose={() => setStagesOpen(false)} onChanged={load} />}
       {add && <LeadForm branches={branches} disc={disc} onClose={() => setAdd(false)} onSaved={() => { setAdd(false); load(); }} />}
       {openLead && <LeadModal lead={openLead} stages={stages} branches={branches} disc={disc}
         onClose={() => setOpenLead(null)} onChanged={() => { setOpenLead(null); load(); }} />}
