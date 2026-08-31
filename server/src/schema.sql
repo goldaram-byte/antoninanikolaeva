@@ -340,3 +340,11 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS parent_phone TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS source       TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS external_id  TEXT;
 CREATE INDEX IF NOT EXISTS idx_clients_external ON clients(external_id) WHERE external_id IS NOT NULL;
+
+-- ── Этап 8: ответственный сотрудник и статус клиента ───────────────────────
+-- Ответственный (менеджер) — сотрудник, который ведёт клиента.
+-- Статус: active — занимается, inactive — перестал ходить (в отчётах не в счёт).
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_id UUID REFERENCES admins(id) ON DELETE SET NULL;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'active';
+CREATE INDEX IF NOT EXISTS idx_clients_manager ON clients(manager_id);
+CREATE INDEX IF NOT EXISTS idx_clients_status  ON clients(status);

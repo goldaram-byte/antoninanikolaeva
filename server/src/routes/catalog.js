@@ -78,6 +78,14 @@ r.delete("/trainers/:id", canAny("employees_manage", "settings_manage"), async (
   try { await q("DELETE FROM trainers WHERE id=$1", [req.params.id]); res.json({ ok: true }); } catch (e) { next(e); }
 });
 
+// --- Сотрудники для поля «Ответственный» (только имена, без прав и почты) ---
+r.get("/managers", async (_req, res, next) => {
+  try {
+    res.json((await q(
+      "SELECT id, COALESCE(NULLIF(name,''), email) AS name FROM admins ORDER BY 2")).rows);
+  } catch (e) { next(e); }
+});
+
 // --- Тарифы абонементов (базовая цена + свои цены по филиалам) ---
 r.get("/subscription-types", async (_req, res, next) => {
   try {

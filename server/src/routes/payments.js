@@ -90,6 +90,7 @@ r.get("/debtors", can("finance_view"), async (req, res, next) => {
        FROM clients c
        LEFT JOIN branches b ON b.id=c.branch_id
        WHERE EXTRACT(DAY FROM CURRENT_DATE) >= 5
+         AND c.status = 'active'                       -- неактивных не считаем должниками по месяцу
          AND EXISTS (SELECT 1 FROM client_sessions cs WHERE cs.client_id=c.id)
          AND NOT EXISTS (
            SELECT 1 FROM client_subscriptions s

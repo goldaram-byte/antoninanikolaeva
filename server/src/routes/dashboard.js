@@ -5,7 +5,7 @@ import { employee } from "../auth.js";
 const r = Router();
 r.use(employee);
 
-// Сводка для дашборда. Денежные показатели (выручка, долги, последние оплаты)
+// Сводка для дашборда. Клиенты считаются только действующие (status='active'). Денежные показатели (выручка, долги, последние оплаты)
 // отдаются только сотрудникам с правом «Видеть оплаты и долги».
 r.get("/", async (req, res, next) => {
   try {
@@ -15,7 +15,8 @@ r.get("/", async (req, res, next) => {
 
     const { rows: [tot] } = await q(
       `SELECT
-         (SELECT count(*)::int FROM clients c WHERE $1::uuid IS NULL OR c.branch_id=$1) AS clients,
+         (SELECT count(*)::int FROM clients c
+           WHERE c.status='active' AND ($1::uuid IS NULL OR c.branch_id=$1)) AS clients,
          (SELECT count(*)::int FROM client_subscriptions s JOIN clients c ON c.id=s.client_id
            WHERE s.status='active' AND s.expiry_date >= CURRENT_DATE
              AND (s.kind='unlimited' OR s.sessions_used < s.sessions_total)
@@ -32,7 +33,7 @@ r.get("/", async (req, res, next) => {
     // Разбивка по филиалам (для сводной таблицы «по всем филиалам»)
     const byBranch = (await q(
       `SELECT b.id, b.name, b.address,
-         (SELECT count(*)::int FROM clients c WHERE c.branch_id=b.id) AS clients,
+         (SELECT count(*)::int FROM clients c WHERE c.branch_id=b.id AND c.status='active') AS clients,
          (SELECT count(*)::int FROM client_subscriptions s JOIN clients c ON c.id=s.client_id
            WHERE c.branch_id=b.id AND s.status='active' AND s.expiry_date >= CURRENT_DATE
              AND (s.kind='unlimited' OR s.sessions_used < s.sessions_total)) AS active_subs,

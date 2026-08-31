@@ -15,6 +15,9 @@ export default function Clients() {
   const [q, setQ] = useState("");
   const [fBranch, setFBranch] = useState("");
   const [fTrainer, setFTrainer] = useState("");
+  const [fManager, setFManager] = useState("");
+  const [fStatus, setFStatus] = useState("active");   // по умолчанию показываем действующих
+  const [managers, setManagers] = useState([]);
   const [edit, setEdit] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
 
@@ -23,14 +26,17 @@ export default function Clients() {
     if (q) params.set("search", q);
     if (fBranch) params.set("branch_id", fBranch);
     if (fTrainer) params.set("trainer_id", fTrainer);
+    if (fManager) params.set("manager_id", fManager);
+    if (fStatus) params.set("status", fStatus);
     setList(await api.get(`/api/clients?${params.toString()}`));
   };
   useEffect(() => {
     api.get("/api/branches").then(setBranches).catch(() => {});
     api.get("/api/catalog/trainers").then(setTrainers).catch(() => {});
     api.get("/api/catalog/disciplines").then(setDisc).catch(() => {});
+    api.get("/api/catalog/managers").then(setManagers).catch(() => {});
   }, []);
-  useEffect(() => { load().catch(() => setList([])); /* eslint-disable-next-line */ }, [q, fBranch, fTrainer]);
+  useEffect(() => { load().catch(() => setList([])); /* eslint-disable-next-line */ }, [q, fBranch, fTrainer, fManager, fStatus]);
 
   return (
     <div className="space-y-5">
@@ -55,6 +61,15 @@ export default function Clients() {
           <option value="">Все тренеры</option>
           {trainers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
+        <select className={inputCls + " w-auto"} value={fManager} onChange={(e) => setFManager(e.target.value)}>
+          <option value="">Все ответственные</option>
+          {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <select className={inputCls + " w-auto"} value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+          <option value="active">Активные</option>
+          <option value="inactive">Неактивные</option>
+          <option value="">Все статусы</option>
+        </select>
       </div>
 
       {!list ? <Spinner /> : (
@@ -62,14 +77,18 @@ export default function Clients() {
           {list.length === 0 ? <Empty text="Никого не нашлось." />
             : <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
-                <tr><th className="px-4 py-2.5">Имя</th><th className="px-4 py-2.5">Филиал</th><th className="px-4 py-2.5">Тренеры</th><th className="px-4 py-2.5">Телефон</th><th className="px-4 py-2.5">Долг</th><th></th></tr>
+                <tr><th className="px-4 py-2.5">Имя</th><th className="px-4 py-2.5">Филиал</th><th className="px-4 py-2.5">Тренеры</th><th className="px-4 py-2.5">Ответственный</th><th className="px-4 py-2.5">Телефон</th><th className="px-4 py-2.5">Долг</th><th></th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {list.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3"><Link to={`/admin/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand">{c.name}</Link></td>
+                    <td className="px-4 py-3">
+                      <Link to={`/admin/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand">{c.name}</Link>
+                      {c.status === "inactive" && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">неактивный</span>}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{c.branch_name || "—"}</td>
                     <td className="px-4 py-3 text-slate-500">{(c.trainers || []).map((t) => t.name).join(", ") || "—"}</td>
+                    <td className="px-4 py-3 text-slate-500">{c.manager_name || "—"}</td>
                     <td className="px-4 py-3 text-slate-500">
                       {c.phone || (c.parent_phone ? <>{c.parent_phone} <span className="text-xs text-slate-400">(род.)</span></> : "—")}
                     </td>
@@ -103,9 +122,13 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
     parent_name: client.parent_name || "",
     parent_phone: client.parent_phone || "",
     source: client.source || "",
+    manager_id: client.manager_id || "",
+    status: client.status || "active",
     referral_code: "",
   });
   const [err, setErr] = useState("");
+  const [managers, setManagers] = useState([]);
+  useEffect(() => { api.get("/api/catalog/managers").then(setManagers).catch(() => {}); }, []);
 
   const toggle = (key, id) => setF((p) => ({ ...p, [key]: p[key].includes(id) ? p[key].filter((x) => x !== id) : [...p[key], id] }));
 
@@ -118,7 +141,7 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
         discipline_ids: f.discipline_ids, trainer_ids: f.trainer_ids,
         discount_percent: Number(f.discount_percent) || 0,
         gender: f.gender || null, parent_name: f.parent_name, parent_phone: f.parent_phone,
-        source: f.source,
+        source: f.source, manager_id: f.manager_id || null, status: f.status,
       };
       if (isNew && f.referral_code.trim()) body.referral_code = f.referral_code.trim();
       if (isNew) await api.post("/api/clients", body);
@@ -167,6 +190,21 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
             <select className={inputCls} value={f.branch_id} onChange={(e) => setF({ ...f, branch_id: e.target.value })}>
               <option value="">— не выбран —</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Ответственный сотрудник">
+            <select className={inputCls} value={f.manager_id || ""} onChange={(e) => setF({ ...f, manager_id: e.target.value })}>
+              <option value="">— не назначен —</option>
+              {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Статус">
+            <select className={inputCls} value={f.status || "active"} onChange={(e) => setF({ ...f, status: e.target.value })}>
+              <option value="active">Активный (занимается)</option>
+              <option value="inactive">Неактивный (перестал ходить)</option>
             </select>
           </Field>
         </div>

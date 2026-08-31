@@ -20,6 +20,8 @@ const TARGETS = [
   { id: "source", label: "Источник (откуда узнали)" },
   { id: "external_id", label: "ID в прежней CRM" },
   { id: "created_at", label: "Дата добавления клиента" },
+  { id: "manager", label: "Ответственный сотрудник" },
+  { id: "status", label: "Статус (активный / неактивный)" },
   { id: "note", label: "В заметки" },
   { id: "note_titled", label: "В заметки (с названием колонки)" },
 ];
@@ -39,6 +41,8 @@ function guess(header) {
   if (/источник|source|откуда/.test(h)) return "source";
   if (/^id$|ид\b|номер карт|external/.test(h)) return "external_id";
   if (/добавлен|создан|регистрац|дата зав/.test(h)) return "created_at";
+  if (/ответствен|менеджер|куратор/.test(h)) return "manager";
+  if (/^статус|состояние|активн/.test(h)) return "status";
   if (/замет|коммент|примеч/.test(h)) return "note";
   return "skip";
 }
@@ -198,6 +202,13 @@ export default function ImportModal({ branches, onClose, onDone }) {
             {result.created_branches?.length > 0 && (
               <div className="rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-700">
                 Созданы филиалы: <b>{result.created_branches.join(", ")}</b>
+              </div>
+            )}
+            {result.managers_not_found?.length > 0 && (
+              <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Не нашлись сотрудники из колонки «Ответственный»: <b>{result.managers_not_found.join(", ")}</b>.
+                Клиенты импортированы без ответственного — назначьте его в карточке или заведите сотрудника
+                с таким же именем в Настройках → Сотрудники и повторите импорт.
               </div>
             )}
             {result.errors_total > 0 && (

@@ -96,6 +96,13 @@ function parseDateTime(s) {
   return isNaN(d) ? null : d.toISOString();
 }
 
+// «Неактивный», «архив», «ушёл» → inactive, всё остальное → active
+function parseStatus(s) {
+  const t = String(s || "").trim().toLowerCase();
+  if (!t) return "active";
+  return /неактив|не актив|архив|ушел|ушёл|отказ|заморож|бывш|расторг/.test(t) ? "inactive" : "active";
+}
+
 // «Муж» / «М» / «male» → m, «Жен» / «Ж» → f
 function parseGender(s) {
   const t = String(s || "").trim().toLowerCase();
@@ -124,7 +131,7 @@ r.post("/clients/preview", upload.single("file"), async (req, res, next) => {
 // Импорт. mapping — JSON-массив по колонкам файла:
 //   name | phone | email | birthdate | gender | discount | branch_name |
 //   parent_name | parent_phone | source | external_id | created_at |
-//   note | note_titled | skip
+//   manager | status | note | note_titled | skip
 // note_titled кладёт в заметки «Название колонки: значение» — так можно
 // импортировать любые дополнительные столбцы (группа, родитель, пояс и т.п.).
 // branch_name берёт филиал из самой строки (выгрузки из других CRM обычно
@@ -155,6 +162,15 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
       (await q("SELECT regexp_replace(coalesce(phone,''), '\\D', '', 'g') AS p FROM clients WHERE phone IS NOT NULL")).rows
         .map((x) => (x.p.length === 11 && x.p[0] === "8" ? "7" + x.p.slice(1) : x.p))
         .filter(Boolean));
+    // сотрудники — для колонки «Ответственный» (ищем по имени или почте)
+    const adminByName = new Map();
+    for (const a of (await q("SELECT id, name, email FROM admins")).rows) {
+      if (a.name) adminByName.set(a.name.trim().toLowerCase(), a.id);
+      adminByName.set(a.email.trim().toLowerCase(), a.id);
+      adminByName.set(a.email.split("@")[0].trim().toLowerCase(), a.id);
+    }
+    const managersNotFound = new Set();
+
     // ID из прежней CRM — по ним дубликаты ловятся даже без телефона
     const existingExt = new Set(
       (await q("SELECT external_id FROM clients WHERE external_id IS NOT NULL")).rows.map((x) => x.external_id));
@@ -207,22 +223,31 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
           }
         }
 
+        // ответственный сотрудник: сопоставляем по имени или почте
+        let managerId = null;
+        const managerRaw = get("manager");
+        if (managerRaw) {
+          managerId = adminByName.get(managerRaw.trim().toLowerCase()) || null;
+          if (!managerId) managersNotFound.add(managerRaw.trim());
+        }
+
         try {
           await c.query(
             `INSERT INTO clients(name, phone, email, birthdate, notes, branch_id, discount_percent,
                                  referral_code, gender, parent_name, parent_phone, source, external_id,
-                                 created_at)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, COALESCE($14::timestamptz, now()))`,
+                                 manager_id, status, created_at)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, COALESCE($16::timestamptz, now()))`,
             [name, phoneRaw || null, get("email") || null, parseBirthdate(get("birthdate")),
              noteParts.join("; "), rowBranch, discount, refCode(),
              parseGender(get("gender")), get("parent_name") || null, get("parent_phone") || null,
-             get("source") || null, extId, parseDateTime(get("created_at"))]);
+             get("source") || null, extId, managerId, parseStatus(get("status")),
+             parseDateTime(get("created_at"))]);
           created++;
         } catch (e) { errors.push({ row: rowNum, reason: e.message.slice(0, 80) }); }
       }
     });
     res.json({ created, skipped, errors: errors.slice(0, 20), errors_total: errors.length,
-               created_branches: createdBranches });
+               created_branches: createdBranches, managers_not_found: [...managersNotFound].slice(0, 10) });
   } catch (e) { res.status(e.status || 500).json({ error: "Импорт не удался: " + e.message }); }
 });
 

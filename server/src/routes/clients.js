@@ -20,9 +20,12 @@ r.get("/", can("clients_view"), async (req, res, next) => {
     const search = `%${(req.query.search || "").toLowerCase()}%`;
     const branchId = req.query.branch_id || null;
     const trainerId = req.query.trainer_id || null;
+    const managerId = req.query.manager_id || null;
+    const status = req.query.status || null;          // active | inactive | null (все)
     const own = ownTrainer(req);
     const { rows } = await q(`
       SELECT c.*, b.name AS branch_name,
+        COALESCE(NULLIF(m.name,''), m.email) AS manager_name,
         COALESCE((SELECT sum(price - paid) FROM client_subscriptions s WHERE s.client_id=c.id AND price>paid AND s.status='active'),0) AS debt,
         COALESCE((SELECT json_agg(jsonb_build_object('id',d.id,'name',d.name,'color',d.color))
                   FROM client_disciplines cd JOIN disciplines d ON d.id=cd.discipline_id WHERE cd.client_id=c.id),'[]') AS disciplines,
@@ -30,12 +33,15 @@ r.get("/", can("clients_view"), async (req, res, next) => {
                   FROM client_trainers ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=c.id),'[]') AS trainers
       FROM clients c
       LEFT JOIN branches b ON b.id=c.branch_id
+      LEFT JOIN admins m ON m.id=c.manager_id
       WHERE (lower(c.name) LIKE $1 OR coalesce(c.phone,'') LIKE $1
              OR coalesce(c.parent_phone,'') LIKE $1 OR lower(coalesce(c.parent_name,'')) LIKE $1)
         AND ($2::uuid IS NULL OR c.branch_id = $2)
         AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$3))
         AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$4))
-      ORDER BY c.name`, [search, branchId, trainerId, own]);
+        AND ($5::uuid IS NULL OR c.manager_id = $5)
+        AND ($6::text IS NULL OR c.status = $6)
+      ORDER BY c.name`, [search, branchId, trainerId, own, managerId, status]);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -44,7 +50,9 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
   try {
     const own = ownTrainer(req);
     const { rows: [c] } = await q(
-      "SELECT c.*, b.name AS branch_name FROM clients c LEFT JOIN branches b ON b.id=c.branch_id WHERE c.id=$1", [req.params.id]);
+      `SELECT c.*, b.name AS branch_name, COALESCE(NULLIF(m.name,''), m.email) AS manager_name
+       FROM clients c LEFT JOIN branches b ON b.id=c.branch_id LEFT JOIN admins m ON m.id=c.manager_id
+       WHERE c.id=$1`, [req.params.id]);
     if (!c) return res.status(404).json({ error: "Клиент не найден" });
     if (own) {
       const { rows: [{ cnt }] } = await q("SELECT count(*)::int AS cnt FROM client_trainers WHERE client_id=$1 AND trainer_id=$2", [c.id, own]);
@@ -89,7 +97,7 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
 r.post("/", can("clients_edit"), async (req, res, next) => {
   try {
     const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent, referral_code,
-            gender, parent_name, parent_phone, source } = req.body;
+            gender, parent_name, parent_phone, source, manager_id, status } = req.body;
     if (!name) return res.status(400).json({ error: "Имя обязательно" });
     const c = await tx(async (cl) => {
       // пригласивший — по реферальному коду (награды начнут начисляться на этапе лояльности)
@@ -100,11 +108,12 @@ r.post("/", can("clients_edit"), async (req, res, next) => {
       }
       const { rows: [row] } = await cl.query(
         `INSERT INTO clients(name,phone,email,birthdate,notes,branch_id,discount_percent,referral_code,referred_by,
-                             gender,parent_name,parent_phone,source)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+                             gender,parent_name,parent_phone,source,manager_id,status)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
         [name, phone || null, email || null, birthdate || null, notes || "",
          branch_id || null, discount_percent || 0, refCode(), referrerId,
-         gender || null, parent_name || null, parent_phone || null, source || null]);
+         gender || null, parent_name || null, parent_phone || null, source || null,
+         manager_id || null, status === "inactive" ? "inactive" : "active"]);
       await setLinks(cl, row.id, discipline_ids, trainer_ids);
       if (referrerId) await cl.query("INSERT INTO referrals(referrer_id, referred_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [referrerId, row.id]);
       return row;
@@ -116,22 +125,34 @@ r.post("/", can("clients_edit"), async (req, res, next) => {
 r.put("/:id", can("clients_edit"), async (req, res, next) => {
   try {
     const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent,
-            gender, parent_name, parent_phone, source } = req.body;
+            gender, parent_name, parent_phone, source, manager_id, status } = req.body;
     const c = await tx(async (cl) => {
       const { rows: [row] } = await cl.query(
         `UPDATE clients SET name=$1, phone=$2, email=$3, birthdate=$4, notes=$5,
            branch_id=$6, discount_percent=COALESCE($7,discount_percent),
-           gender=$8, parent_name=$9, parent_phone=$10, source=$11
-         WHERE id=$12 RETURNING *`,
+           gender=$8, parent_name=$9, parent_phone=$10, source=$11,
+           manager_id=$12, status=COALESCE($13, status)
+         WHERE id=$14 RETURNING *`,
         [name, phone || null, email || null, birthdate || null, notes || "",
          branch_id || null, discount_percent ?? null,
-         gender || null, parent_name || null, parent_phone || null, source || null, req.params.id]);
+         gender || null, parent_name || null, parent_phone || null, source || null,
+         manager_id || null, status ? (status === "inactive" ? "inactive" : "active") : null, req.params.id]);
       if (!row) return null;
       await setLinks(cl, row.id, discipline_ids, trainer_ids);
       return row;
     });
     if (!c) return res.status(404).json({ error: "Клиент не найден" });
     res.json(c);
+  } catch (e) { next(e); }
+});
+
+// Быстрое переключение статуса из карточки (без открытия формы)
+r.put("/:id/status", can("clients_edit"), async (req, res, next) => {
+  try {
+    const status = req.body?.status === "inactive" ? "inactive" : "active";
+    const { rows: [row] } = await q("UPDATE clients SET status=$1 WHERE id=$2 RETURNING id, status", [status, req.params.id]);
+    if (!row) return res.status(404).json({ error: "Клиент не найден" });
+    res.json(row);
   } catch (e) { next(e); }
 });
 

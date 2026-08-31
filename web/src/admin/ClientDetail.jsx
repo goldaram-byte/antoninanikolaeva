@@ -52,6 +52,11 @@ export default function ClientDetail() {
     api.get("/api/catalog/disciplines").then(setDisc).catch(() => {});
   }, [load, nav]);
 
+  const toggleStatus = async () => {
+    await api.put(`/api/clients/${id}/status`, { status: c.status === "inactive" ? "active" : "inactive" });
+    load();
+  };
+
   if (!c) return <Spinner />;
   const debt = (c.subs || []).reduce((a, s) => a + Math.max(0, Number(s.price) - Number(s.paid)), 0);
 
@@ -60,7 +65,17 @@ export default function ClientDetail() {
       <div className="flex items-center gap-3">
         <Link to="/admin/clients" className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:text-slate-800"><ArrowLeft size={16} /></Link>
         <Header title={c.name} subtitle={[c.branch_name, (c.trainers || []).map((t) => t.name).join(", ")].filter(Boolean).join(" · ") || "без привязок"} />
-        {hasPerm("clients_edit") && <button className={btnGhost + " ml-auto"} onClick={() => setEdit(true)}><Pencil size={15} /> Редактировать</button>}
+        {c.status === "inactive"
+          ? <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">Неактивный</span>
+          : <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-600">Активный</span>}
+        {hasPerm("clients_edit") && (
+          <div className="ml-auto flex gap-2">
+            <button className={btnGhost} onClick={toggleStatus}>
+              {c.status === "inactive" ? "Вернуть в активные" : "Сделать неактивным"}
+            </button>
+            <button className={btnGhost} onClick={() => setEdit(true)}><Pencil size={15} /> Редактировать</button>
+          </div>
+        )}
       </div>
 
       {/* Контакты и переход в мессенджеры */}
@@ -99,9 +114,10 @@ export default function ClientDetail() {
         <Info label="Скидка" value={Number(c.discount_percent) > 0 ? `${Number(c.discount_percent)}%` : "—"} />
         <Info label="Баллы" value={c.bonus_points || 0} />
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Info label="Дата рождения" value={c.birthdate ? `${fmtDate(c.birthdate)} · ${age(c.birthdate)} ${years(age(c.birthdate))}` : "—"} />
         <Info label="Пол" value={GENDERS[c.gender] || "—"} />
+        <Info label="Ответственный" value={c.manager_name || "—"} />
         <Info label="Источник" value={c.source || "—"} />
         <Info label="В базе с" value={fmtDate(c.created_at)} />
       </div>
