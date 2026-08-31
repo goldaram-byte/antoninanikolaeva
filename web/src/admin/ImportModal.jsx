@@ -13,6 +13,7 @@ const TARGETS = [
   { id: "email", label: "Email" },
   { id: "birthdate", label: "Дата рождения" },
   { id: "discount", label: "Скидка, %" },
+  { id: "branch_name", label: "Филиал (из этой колонки)" },
   { id: "note", label: "В заметки" },
   { id: "note_titled", label: "В заметки (с названием колонки)" },
 ];
@@ -25,6 +26,7 @@ function guess(header) {
   if (/mail|почт/.test(h)) return "email";
   if (/рожд|birth|д\.р|др\b|дата р/.test(h)) return "birthdate";
   if (/скид/.test(h)) return "discount";
+  if (/филиал|отделен|зал\b|клуб/.test(h)) return "branch_name";
   if (/замет|коммент|примеч/.test(h)) return "note";
   return "skip";
 }
@@ -46,6 +48,7 @@ export default function ImportModal({ branches, onClose, onDone }) {
   const [mapping, setMapping] = useState([]);
   const [branchId, setBranchId] = useState("");
   const [skipDup, setSkipDup] = useState(true);
+  const [createBranches, setCreateBranches] = useState(true);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,6 +64,8 @@ export default function ImportModal({ branches, onClose, onDone }) {
     finally { setBusy(false); }
   };
 
+  const byBranchColumn = mapping.includes("branch_name");
+
   const run = async () => {
     if (!mapping.includes("name")) return setErr("Выберите, в какой колонке имя клиента");
     setErr(""); setBusy(true);
@@ -69,6 +74,7 @@ export default function ImportModal({ branches, onClose, onDone }) {
         mapping: JSON.stringify(mapping),
         branch_id: branchId,
         skip_duplicates: skipDup ? "1" : "0",
+        create_branches: createBranches ? "1" : "0",
       });
       setResult(r);
     } catch (e) { setErr(e.message); }
@@ -118,20 +124,31 @@ export default function ImportModal({ branches, onClose, onDone }) {
                   </div>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-slate-400">«В заметки (с названием колонки)» сохраняет любые дополнительные столбцы в заметки клиента, например «Пояс: жёлтый».</p>
+              <p className="mt-2 text-xs text-slate-400">
+                «В заметки (с названием колонки)» сохраняет любые дополнительные столбцы в заметки клиента, например «Пояс: жёлтый».
+                «Филиал (из этой колонки)» разложит клиентов по филиалам прямо из файла.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Филиал для всех импортируемых">
+              <Field label={byBranchColumn ? "Филиал, если в строке пусто" : "Филиал для всех импортируемых"}>
                 <select className={inputCls} value={branchId} onChange={(e) => setBranchId(e.target.value)}>
                   <option value="">— не указывать —</option>
                   {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </Field>
-              <label className="mt-6 flex items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" className="h-4 w-4" checked={skipDup} onChange={(e) => setSkipDup(e.target.checked)} />
-                Пропускать дубликаты по телефону
-              </label>
+              <div className="space-y-2 pt-6">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" className="h-4 w-4" checked={skipDup} onChange={(e) => setSkipDup(e.target.checked)} />
+                  Пропускать дубликаты по телефону
+                </label>
+                {byBranchColumn && (
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" className="h-4 w-4" checked={createBranches} onChange={(e) => setCreateBranches(e.target.checked)} />
+                    Создавать филиалы, которых ещё нет
+                  </label>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -142,6 +159,11 @@ export default function ImportModal({ branches, onClose, onDone }) {
               ✓ Импортировано клиентов: <b>{result.created}</b>
               {result.skipped > 0 && <> · пропущено дубликатов: <b>{result.skipped}</b></>}
             </div>
+            {result.created_branches?.length > 0 && (
+              <div className="rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                Созданы филиалы: <b>{result.created_branches.join(", ")}</b>
+              </div>
+            )}
             {result.errors_total > 0 && (
               <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
                 Строк с ошибками: {result.errors_total}

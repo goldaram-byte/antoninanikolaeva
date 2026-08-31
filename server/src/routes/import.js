@@ -99,22 +99,31 @@ r.post("/clients/preview", upload.single("file"), async (req, res, next) => {
 });
 
 // Импорт. mapping — JSON-массив по колонкам файла:
-//   name | phone | email | birthdate | discount | note | note_titled | skip
+//   name | phone | email | birthdate | discount | branch_name | note | note_titled | skip
 // note_titled кладёт в заметки «Название колонки: значение» — так можно
 // импортировать любые дополнительные столбцы (группа, родитель, пояс и т.п.).
+// branch_name берёт филиал из самой строки (выгрузки из других CRM обычно
+// содержат колонку с филиалом) — при create_branches=1 недостающие создаются.
 r.post("/clients", upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Файл не получен" });
     let mapping;
     try { mapping = JSON.parse(req.body.mapping || "[]"); } catch { mapping = []; }
     if (!mapping.includes("name")) return res.status(400).json({ error: "Не выбрана колонка с именем клиента" });
-    const branchId = req.body.branch_id || null;
+    const branchId = req.body.branch_id || null;          // филиал по умолчанию
     const skipDup = req.body.skip_duplicates !== "0";
     const hasHeader = req.body.has_header !== "0";
+    const createBranches = req.body.create_branches === "1";
 
     const rows = await parseTable(req.file);
     const data = hasHeader ? rows.slice(1) : rows;
     const headers = hasHeader ? rows[0] : mapping.map((_, i) => `Колонка ${i + 1}`);
+
+    // справочник филиалов по названию (для колонки «Филиал»)
+    const branchByName = new Map();
+    for (const b of (await q("SELECT id, name FROM branches")).rows)
+      branchByName.set(b.name.trim().toLowerCase(), b.id);
+    const createdBranches = [];
 
     // телефоны, уже существующие в базе (для пропуска дубликатов)
     const existing = new Set(
@@ -150,17 +159,35 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
         });
 
         const discount = Number(String(get("discount")).replace(",", ".").replace(/[^\d.]/g, "")) || 0;
+
+        // филиал: из колонки файла, иначе выбранный в форме
+        let rowBranch = branchId;
+        const branchName = get("branch_name");
+        if (branchName) {
+          const key = branchName.trim().toLowerCase();
+          if (branchByName.has(key)) rowBranch = branchByName.get(key);
+          else if (createBranches) {
+            const { rows: [{ mx }] } = await c.query("SELECT COALESCE(MAX(sort),-1)+1 AS mx FROM branches");
+            const { rows: [nb] } = await c.query(
+              "INSERT INTO branches(name, address, sort) VALUES($1,'',$2) RETURNING id, name", [branchName.trim(), mx]);
+            branchByName.set(key, nb.id);
+            createdBranches.push(nb.name);
+            rowBranch = nb.id;
+          }
+        }
+
         try {
           await c.query(
             `INSERT INTO clients(name, phone, email, birthdate, notes, branch_id, discount_percent, referral_code)
              VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
             [name, phoneRaw || null, get("email") || null, parseBirthdate(get("birthdate")),
-             noteParts.join("; "), branchId, discount, refCode()]);
+             noteParts.join("; "), rowBranch, discount, refCode()]);
           created++;
         } catch (e) { errors.push({ row: rowNum, reason: e.message.slice(0, 80) }); }
       }
     });
-    res.json({ created, skipped, errors: errors.slice(0, 20), errors_total: errors.length });
+    res.json({ created, skipped, errors: errors.slice(0, 20), errors_total: errors.length,
+               created_branches: createdBranches });
   } catch (e) { res.status(e.status || 500).json({ error: "Импорт не удался: " + e.message }); }
 });
 
