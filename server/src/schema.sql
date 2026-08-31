@@ -330,3 +330,13 @@ CREATE TABLE IF NOT EXISTS client_tasks (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_client_tasks ON client_tasks(client_id, done, due_date);
+
+-- ── Этап 7: поля карточки клиента, которые приходят из переносимых баз ──────
+-- Пол, родитель (в детской школе звонят именно ему), источник обращения
+-- и ID клиента в прежней CRM — чтобы повторный импорт не создавал дубликаты.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gender       TEXT;   -- 'm' | 'f' | NULL
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS parent_name  TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS parent_phone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS source       TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS external_id  TEXT;
+CREATE INDEX IF NOT EXISTS idx_clients_external ON clients(external_id) WHERE external_id IS NOT NULL;

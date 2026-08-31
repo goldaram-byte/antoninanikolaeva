@@ -10,6 +10,26 @@ import PaymentModal from "./PaymentModal.jsx";
 import { WEEKDAYS } from "./Schedule.jsx";
 
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join(".") : "—");
+const GENDERS = { m: "Мужской", f: "Женский" };
+
+// Возраст по дате рождения — в детской школе так удобнее подбирать группу
+function age(birthdate) {
+  if (!birthdate) return null;
+  const b = new Date(String(birthdate).slice(0, 10));
+  if (isNaN(b)) return null;
+  const now = new Date();
+  let a = now.getFullYear() - b.getFullYear();
+  const m = now.getMonth() - b.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < b.getDate())) a--;
+  return a;
+}
+const years = (n) => {
+  const t = n % 100, o = n % 10;
+  if (t > 10 && t < 20) return "лет";
+  if (o === 1) return "год";
+  if (o >= 2 && o <= 4) return "года";
+  return "лет";
+};
 
 export default function ClientDetail() {
   const { id } = useParams();
@@ -56,12 +76,34 @@ export default function ClientDetail() {
         {debt > 0 && <span className="ml-auto rounded-lg bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-600">Долг: {money(debt, currency)}</span>}
       </div>
 
+      {/* Родитель — по нему чаще всего и связываются */}
+      {(c.parent_phone || c.parent_name) && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500">Родитель{c.parent_name ? `: ` : ""}</span>
+          {c.parent_name && <span className="font-medium text-slate-700">{c.parent_name}</span>}
+          {c.parent_phone && (
+            <>
+              <span className="font-medium text-slate-700">{c.parent_phone}</span>
+              <a href={telLink(c.parent_phone)} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:bg-slate-50"><Phone size={14} /> Позвонить</a>
+              <a href={waLink(c.parent_phone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-white hover:bg-emerald-600"><MessageCircle size={14} /> WhatsApp</a>
+              <a href={tgLink(c.parent_phone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-white hover:bg-sky-600"><Send size={14} /> Telegram</a>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Сводка */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Info label="Филиал" value={c.branch_name || "—"} />
         <Info label="Направления" value={(c.disciplines || []).map((d) => d.name).join(", ") || "—"} />
         <Info label="Скидка" value={Number(c.discount_percent) > 0 ? `${Number(c.discount_percent)}%` : "—"} />
         <Info label="Баллы" value={c.bonus_points || 0} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Info label="Дата рождения" value={c.birthdate ? `${fmtDate(c.birthdate)} · ${age(c.birthdate)} ${years(age(c.birthdate))}` : "—"} />
+        <Info label="Пол" value={GENDERS[c.gender] || "—"} />
+        <Info label="Источник" value={c.source || "—"} />
+        <Info label="В базе с" value={fmtDate(c.created_at)} />
       </div>
       {c.referredByName && <p className="text-xs text-slate-400">Пригласил(а): {c.referredByName}</p>}
       {c.notes && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{c.notes}</p>}

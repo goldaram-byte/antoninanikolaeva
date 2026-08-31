@@ -12,21 +12,33 @@ const TARGETS = [
   { id: "phone", label: "Телефон" },
   { id: "email", label: "Email" },
   { id: "birthdate", label: "Дата рождения" },
+  { id: "gender", label: "Пол" },
   { id: "discount", label: "Скидка, %" },
   { id: "branch_name", label: "Филиал (из этой колонки)" },
+  { id: "parent_name", label: "Родитель (имя)" },
+  { id: "parent_phone", label: "Телефон родителя" },
+  { id: "source", label: "Источник (откуда узнали)" },
+  { id: "external_id", label: "ID в прежней CRM" },
+  { id: "created_at", label: "Дата добавления клиента" },
   { id: "note", label: "В заметки" },
   { id: "note_titled", label: "В заметки (с названием колонки)" },
 ];
 
-// Автоугадывание по заголовку колонки
+// Автоугадывание по заголовку колонки. Порядок важен: «Добавлен в Филиал»
+// должен попасть в филиал, а не в дату добавления.
 function guess(header) {
   const h = String(header || "").toLowerCase();
+  if (/филиал|отделен|зал\b|клуб/.test(h)) return "branch_name";
+  if (/родител|мамы|папы|мать|отец/.test(h)) return /тел|phone/.test(h) ? "parent_phone" : (/фио|имя/.test(h) ? "parent_name" : "note_titled");
   if (/фио|имя|name|ученик|клиент|ребен|ребён/.test(h)) return "name";
   if (/тел|phone|моб/.test(h)) return "phone";
   if (/mail|почт/.test(h)) return "email";
   if (/рожд|birth|д\.р|др\b|дата р/.test(h)) return "birthdate";
+  if (/^пол$|гендер|gender/.test(h)) return "gender";
   if (/скид/.test(h)) return "discount";
-  if (/филиал|отделен|зал\b|клуб/.test(h)) return "branch_name";
+  if (/источник|source|откуда/.test(h)) return "source";
+  if (/^id$|ид\b|номер карт|external/.test(h)) return "external_id";
+  if (/добавлен|создан|регистрац|дата зав/.test(h)) return "created_at";
   if (/замет|коммент|примеч/.test(h)) return "note";
   return "skip";
 }
@@ -65,6 +77,11 @@ export default function ImportModal({ branches, onClose, onDone }) {
   };
 
   const byBranchColumn = mapping.includes("branch_name");
+  const filled = preview?.filled || [];
+  // колонки с данными, которые сейчас никуда не идут — их не должно остаться
+  const lostCols = mapping.map((m, i) => (m === "skip" && (filled[i] ?? 0) > 0 ? i : -1)).filter((i) => i >= 0);
+  const emptyCols = filled.filter((n) => n === 0).length;
+  const dumpRest = () => setMapping((m) => m.map((x, i) => (x === "skip" && (filled[i] ?? 0) > 0 ? "note_titled" : x)));
 
   const run = async () => {
     if (!mapping.includes("name")) return setErr("Выберите, в какой колонке имя клиента");
@@ -115,9 +132,13 @@ export default function ImportModal({ branches, onClose, onDone }) {
                   <div key={i} className="grid grid-cols-2 items-center gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-slate-800">{h || `Колонка ${i + 1}`}</div>
-                      <div className="truncate text-xs text-slate-400">{preview.rows.map((r) => r[i]).filter(Boolean).slice(0, 2).join(" · ") || "—"}</div>
+                      <div className="truncate text-xs text-slate-400">
+                        {(filled[i] ?? 0) === 0
+                          ? "колонка пустая"
+                          : `${filled[i]} из ${preview.total} · ${preview.rows.map((r) => r[i]).filter(Boolean).slice(0, 2).join(" · ")}`}
+                      </div>
                     </div>
-                    <select className={inputCls} value={mapping[i] || "skip"}
+                    <select className={inputCls + ((filled[i] ?? 0) === 0 ? " text-slate-400" : "")} value={mapping[i] || "skip"}
                       onChange={(e) => setMapping((m) => m.map((x, j) => (j === i ? e.target.value : x)))}>
                       {TARGETS.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
                     </select>
@@ -128,6 +149,21 @@ export default function ImportModal({ branches, onClose, onDone }) {
                 «В заметки (с названием колонки)» сохраняет любые дополнительные столбцы в заметки клиента, например «Пояс: жёлтый».
                 «Филиал (из этой колонки)» разложит клиентов по филиалам прямо из файла.
               </p>
+
+              {lostCols.length > 0 ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <span>
+                    Не импортируются колонки с данными: <b>{lostCols.map((i) => preview.headers[i] || `Колонка ${i + 1}`).join(", ")}</b>
+                  </span>
+                  <button className="ml-auto rounded-md bg-amber-600 px-2 py-1 font-medium text-white hover:bg-amber-700" onClick={dumpRest}>
+                    Сложить их в заметки
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                  Все колонки с данными учтены{emptyCols > 0 ? ` (пустых колонок в файле: ${emptyCols} — импортировать нечего)` : ""}.
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

@@ -45,7 +45,7 @@ export default function Clients() {
       <div className="flex flex-wrap gap-3">
         <div className="relative min-w-[220px] flex-1">
           <Search size={16} className="absolute left-3 top-2.5 text-slate-400" />
-          <input className={inputCls + " pl-9"} placeholder="Поиск по имени или телефону" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className={inputCls + " pl-9"} placeholder="Поиск: имя, телефон, родитель" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <select className={inputCls + " w-auto"} value={fBranch} onChange={(e) => setFBranch(e.target.value)}>
           <option value="">Все филиалы</option>
@@ -70,7 +70,9 @@ export default function Clients() {
                     <td className="px-4 py-3"><Link to={`/admin/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand">{c.name}</Link></td>
                     <td className="px-4 py-3 text-slate-500">{c.branch_name || "—"}</td>
                     <td className="px-4 py-3 text-slate-500">{(c.trainers || []).map((t) => t.name).join(", ") || "—"}</td>
-                    <td className="px-4 py-3 text-slate-500">{c.phone || "—"}</td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {c.phone || (c.parent_phone ? <>{c.parent_phone} <span className="text-xs text-slate-400">(род.)</span></> : "—")}
+                    </td>
                     <td className="px-4 py-3">{Number(c.debt) > 0 ? <span className="font-semibold text-red-600">{money(c.debt, currency)}</span> : <span className="text-slate-400">—</span>}</td>
                     <td className="px-4 py-3 text-right">{hasPerm("clients_edit") && <button onClick={() => setEdit(c)} className="text-slate-400 hover:text-slate-700"><Pencil size={15} /></button>}</td>
                   </tr>
@@ -97,6 +99,10 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
     discipline_ids: (client.disciplines || []).map((d) => d.id),
     trainer_ids: (client.trainers || []).map((t) => t.id),
     discount_percent: client.discount_percent || 0,
+    gender: client.gender || "",
+    parent_name: client.parent_name || "",
+    parent_phone: client.parent_phone || "",
+    source: client.source || "",
     referral_code: "",
   });
   const [err, setErr] = useState("");
@@ -111,6 +117,8 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
         notes: f.notes, branch_id: f.branch_id || null,
         discipline_ids: f.discipline_ids, trainer_ids: f.trainer_ids,
         discount_percent: Number(f.discount_percent) || 0,
+        gender: f.gender || null, parent_name: f.parent_name, parent_phone: f.parent_phone,
+        source: f.source,
       };
       if (isNew && f.referral_code.trim()) body.referral_code = f.referral_code.trim();
       if (isNew) await api.post("/api/clients", body);
@@ -137,7 +145,24 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
           <Field label="Дата рождения"><input type="date" className={inputCls} value={f.birthdate || ""} onChange={(e) => setF({ ...f, birthdate: e.target.value })} /></Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
+          <Field label="Пол">
+            <select className={inputCls} value={f.gender || ""} onChange={(e) => setF({ ...f, gender: e.target.value })}>
+              <option value="">— не указан —</option>
+              <option value="m">Мужской</option>
+              <option value="f">Женский</option>
+            </select>
+          </Field>
           <Field label="Email"><input className={inputCls} value={f.email || ""} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
+        </div>
+
+        {/* Родитель — в детской школе звонят обычно ему */}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Родитель (имя)"><input className={inputCls} value={f.parent_name || ""} onChange={(e) => setF({ ...f, parent_name: e.target.value })} /></Field>
+          <Field label="Телефон родителя"><input className={inputCls} placeholder="+7…" value={f.parent_phone || ""} onChange={(e) => setF({ ...f, parent_phone: e.target.value })} /></Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Источник (откуда узнали)"><input className={inputCls} value={f.source || ""} onChange={(e) => setF({ ...f, source: e.target.value })} placeholder="напр. Рекомендации" /></Field>
           <Field label="Филиал">
             <select className={inputCls} value={f.branch_id} onChange={(e) => setF({ ...f, branch_id: e.target.value })}>
               <option value="">— не выбран —</option>

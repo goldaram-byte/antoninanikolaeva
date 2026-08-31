@@ -86,6 +86,25 @@ function parseBirthdate(s) {
   return null;
 }
 
+// «01.09.2024 12:30» / «2024-09-01» → дата регистрации клиента
+function parseDateTime(s) {
+  const t = String(s || "").trim();
+  if (!t) return null;
+  const m = t.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")} ${(m[4] || "00").padStart(2, "0")}:${m[5] || "00"}`;
+  const d = new Date(t);
+  return isNaN(d) ? null : d.toISOString();
+}
+
+// «Муж» / «М» / «male» → m, «Жен» / «Ж» → f
+function parseGender(s) {
+  const t = String(s || "").trim().toLowerCase();
+  if (!t) return null;
+  if (/^(м|муж|мужской|m|male)/.test(t)) return "m";
+  if (/^(ж|жен|женский|f|w|female)/.test(t)) return "f";
+  return null;
+}
+
 // Предпросмотр: заголовки и первые строки, чтобы настроить сопоставление колонок
 r.post("/clients/preview", upload.single("file"), async (req, res, next) => {
   try {
@@ -94,12 +113,18 @@ r.post("/clients/preview", upload.single("file"), async (req, res, next) => {
     if (rows.length === 0) return res.status(400).json({ error: "Файл пустой" });
     const width = Math.max(...rows.map((x) => x.length));
     const headers = rows[0].concat(Array(Math.max(0, width - rows[0].length)).fill(""));
-    res.json({ headers, rows: rows.slice(1, 6), total: rows.length - 1 });
+    const body = rows.slice(1);
+    // сколько значений реально заполнено в каждой колонке — чтобы в мастере
+    // сразу было видно, где данные есть, а какие колонки в файле пустые
+    const filled = headers.map((_, i) => body.filter((r) => String(r[i] ?? "").trim() !== "").length);
+    res.json({ headers, filled, rows: body.slice(0, 6), total: body.length });
   } catch (e) { res.status(e.status || 500).json({ error: "Не удалось прочитать файл: " + e.message }); }
 });
 
 // Импорт. mapping — JSON-массив по колонкам файла:
-//   name | phone | email | birthdate | discount | branch_name | note | note_titled | skip
+//   name | phone | email | birthdate | gender | discount | branch_name |
+//   parent_name | parent_phone | source | external_id | created_at |
+//   note | note_titled | skip
 // note_titled кладёт в заметки «Название колонки: значение» — так можно
 // импортировать любые дополнительные столбцы (группа, родитель, пояс и т.п.).
 // branch_name берёт филиал из самой строки (выгрузки из других CRM обычно
@@ -130,6 +155,9 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
       (await q("SELECT regexp_replace(coalesce(phone,''), '\\D', '', 'g') AS p FROM clients WHERE phone IS NOT NULL")).rows
         .map((x) => (x.p.length === 11 && x.p[0] === "8" ? "7" + x.p.slice(1) : x.p))
         .filter(Boolean));
+    // ID из прежней CRM — по ним дубликаты ловятся даже без телефона
+    const existingExt = new Set(
+      (await q("SELECT external_id FROM clients WHERE external_id IS NOT NULL")).rows.map((x) => x.external_id));
 
     let created = 0, skipped = 0;
     const errors = [];
@@ -147,15 +175,18 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
 
         const phoneRaw = get("phone");
         const pn = normPhone(phoneRaw);
-        if (pn && existing.has(pn)) { if (skipDup) { skipped++; continue; } }
+        const extId = get("external_id") || null;
+        if (skipDup && ((pn && existing.has(pn)) || (extId && existingExt.has(extId)))) { skipped++; continue; }
         if (pn) existing.add(pn);
+        if (extId) existingExt.add(extId);
 
         const noteParts = [];
         mapping.forEach((m, col) => {
           const v = String(row[col] ?? "").trim();
           if (!v) return;
           if (m === "note") noteParts.push(v);
-          if (m === "note_titled") noteParts.push(`${headers[col] || "Колонка " + (col + 1)}: ${v}`);
+          // нули («Баланс: 0», «Посещений: 0») в заметки не пишем — это шум
+          if (m === "note_titled" && v !== "0") noteParts.push(`${headers[col] || "Колонка " + (col + 1)}: ${v}`);
         });
 
         const discount = Number(String(get("discount")).replace(",", ".").replace(/[^\d.]/g, "")) || 0;
@@ -178,10 +209,14 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
 
         try {
           await c.query(
-            `INSERT INTO clients(name, phone, email, birthdate, notes, branch_id, discount_percent, referral_code)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+            `INSERT INTO clients(name, phone, email, birthdate, notes, branch_id, discount_percent,
+                                 referral_code, gender, parent_name, parent_phone, source, external_id,
+                                 created_at)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, COALESCE($14::timestamptz, now()))`,
             [name, phoneRaw || null, get("email") || null, parseBirthdate(get("birthdate")),
-             noteParts.join("; "), rowBranch, discount, refCode()]);
+             noteParts.join("; "), rowBranch, discount, refCode(),
+             parseGender(get("gender")), get("parent_name") || null, get("parent_phone") || null,
+             get("source") || null, extId, parseDateTime(get("created_at"))]);
           created++;
         } catch (e) { errors.push({ row: rowNum, reason: e.message.slice(0, 80) }); }
       }

@@ -30,7 +30,8 @@ r.get("/", can("clients_view"), async (req, res, next) => {
                   FROM client_trainers ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=c.id),'[]') AS trainers
       FROM clients c
       LEFT JOIN branches b ON b.id=c.branch_id
-      WHERE (lower(c.name) LIKE $1 OR coalesce(c.phone,'') LIKE $1)
+      WHERE (lower(c.name) LIKE $1 OR coalesce(c.phone,'') LIKE $1
+             OR coalesce(c.parent_phone,'') LIKE $1 OR lower(coalesce(c.parent_name,'')) LIKE $1)
         AND ($2::uuid IS NULL OR c.branch_id = $2)
         AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$3))
         AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$4))
@@ -87,7 +88,8 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
 
 r.post("/", can("clients_edit"), async (req, res, next) => {
   try {
-    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent, referral_code } = req.body;
+    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent, referral_code,
+            gender, parent_name, parent_phone, source } = req.body;
     if (!name) return res.status(400).json({ error: "Имя обязательно" });
     const c = await tx(async (cl) => {
       // пригласивший — по реферальному коду (награды начнут начисляться на этапе лояльности)
@@ -97,10 +99,12 @@ r.post("/", can("clients_edit"), async (req, res, next) => {
         referrerId = ref?.id || null;
       }
       const { rows: [row] } = await cl.query(
-        `INSERT INTO clients(name,phone,email,birthdate,notes,branch_id,discount_percent,referral_code,referred_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        `INSERT INTO clients(name,phone,email,birthdate,notes,branch_id,discount_percent,referral_code,referred_by,
+                             gender,parent_name,parent_phone,source)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [name, phone || null, email || null, birthdate || null, notes || "",
-         branch_id || null, discount_percent || 0, refCode(), referrerId]);
+         branch_id || null, discount_percent || 0, refCode(), referrerId,
+         gender || null, parent_name || null, parent_phone || null, source || null]);
       await setLinks(cl, row.id, discipline_ids, trainer_ids);
       if (referrerId) await cl.query("INSERT INTO referrals(referrer_id, referred_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [referrerId, row.id]);
       return row;
@@ -111,14 +115,17 @@ r.post("/", can("clients_edit"), async (req, res, next) => {
 
 r.put("/:id", can("clients_edit"), async (req, res, next) => {
   try {
-    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent } = req.body;
+    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent,
+            gender, parent_name, parent_phone, source } = req.body;
     const c = await tx(async (cl) => {
       const { rows: [row] } = await cl.query(
         `UPDATE clients SET name=$1, phone=$2, email=$3, birthdate=$4, notes=$5,
-           branch_id=$6, discount_percent=COALESCE($7,discount_percent)
-         WHERE id=$8 RETURNING *`,
+           branch_id=$6, discount_percent=COALESCE($7,discount_percent),
+           gender=$8, parent_name=$9, parent_phone=$10, source=$11
+         WHERE id=$12 RETURNING *`,
         [name, phone || null, email || null, birthdate || null, notes || "",
-         branch_id || null, discount_percent ?? null, req.params.id]);
+         branch_id || null, discount_percent ?? null,
+         gender || null, parent_name || null, parent_phone || null, source || null, req.params.id]);
       if (!row) return null;
       await setLinks(cl, row.id, discipline_ids, trainer_ids);
       return row;
