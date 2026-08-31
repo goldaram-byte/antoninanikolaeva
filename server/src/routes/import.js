@@ -124,7 +124,18 @@ r.post("/clients/preview", upload.single("file"), async (req, res, next) => {
     // сколько значений реально заполнено в каждой колонке — чтобы в мастере
     // сразу было видно, где данные есть, а какие колонки в файле пустые
     const filled = headers.map((_, i) => body.filter((r) => String(r[i] ?? "").trim() !== "").length);
-    res.json({ headers, filled, rows: body.slice(0, 6), total: body.length });
+    // Для колонок-справочников (филиал, ответственный, статус) возвращаем список
+    // различных значений — в мастере их сопоставляют с сотрудниками школы.
+    const options = headers.map((_, i) => {
+      const set = new Set();
+      for (const r of body) {
+        const v = String(r[i] ?? "").trim();
+        if (v) set.add(v);
+        if (set.size > 30) return null;                 // не справочник, а обычные данные
+      }
+      return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+    });
+    res.json({ headers, filled, options, rows: body.slice(0, 6), total: body.length });
   } catch (e) { res.status(e.status || 500).json({ error: "Не удалось прочитать файл: " + e.message }); }
 });
 
@@ -134,6 +145,8 @@ r.post("/clients/preview", upload.single("file"), async (req, res, next) => {
 //   manager | status | note | note_titled | skip
 // note_titled кладёт в заметки «Название колонки: значение» — так можно
 // импортировать любые дополнительные столбцы (группа, родитель, пояс и т.п.).
+// При update_existing=1 уже заведённые клиенты (по ID прежней CRM или телефону)
+// не пропускаются, а дополняются: пустые значения в файле ничего не затирают.
 // branch_name берёт филиал из самой строки (выгрузки из других CRM обычно
 // содержат колонку с филиалом) — при create_branches=1 недостающие создаются.
 r.post("/clients", upload.single("file"), async (req, res, next) => {
@@ -144,6 +157,7 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
     if (!mapping.includes("name")) return res.status(400).json({ error: "Не выбрана колонка с именем клиента" });
     const branchId = req.body.branch_id || null;          // филиал по умолчанию
     const skipDup = req.body.skip_duplicates !== "0";
+    const updateExisting = req.body.update_existing === "1";   // дополнять уже заведённых
     const hasHeader = req.body.has_header !== "0";
     const createBranches = req.body.create_branches === "1";
 
@@ -157,11 +171,13 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
       branchByName.set(b.name.trim().toLowerCase(), b.id);
     const createdBranches = [];
 
-    // телефоны, уже существующие в базе (для пропуска дубликатов)
-    const existing = new Set(
-      (await q("SELECT regexp_replace(coalesce(phone,''), '\\D', '', 'g') AS p FROM clients WHERE phone IS NOT NULL")).rows
-        .map((x) => (x.p.length === 11 && x.p[0] === "8" ? "7" + x.p.slice(1) : x.p))
-        .filter(Boolean));
+    // телефоны клиентов, уже заведённых в базе (для пропуска или обновления дубликатов)
+    const idByPhone = new Map();
+    for (const x of (await q(
+      `SELECT id, regexp_replace(coalesce(phone,''), '\\D', '', 'g') AS p FROM clients WHERE phone IS NOT NULL`)).rows) {
+      const ph = x.p.length === 11 && x.p[0] === "8" ? "7" + x.p.slice(1) : x.p;
+      if (ph) idByPhone.set(ph, x.id);
+    }
     // сотрудники — для колонки «Ответственный» (ищем по имени или почте)
     const adminByName = new Map();
     for (const a of (await q("SELECT id, name, email FROM admins")).rows) {
@@ -170,12 +186,18 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
       adminByName.set(a.email.split("@")[0].trim().toLowerCase(), a.id);
     }
     const managersNotFound = new Set();
+    // ручное сопоставление из мастера: { "значение в файле": "id сотрудника" | "" }
+    let managerMap = {};
+    try { managerMap = JSON.parse(req.body.manager_map || "{}") || {}; } catch { managerMap = {}; }
+    const managerByValue = new Map(
+      Object.entries(managerMap).map(([k, v]) => [String(k).trim().toLowerCase(), v || null]));
 
-    // ID из прежней CRM — по ним дубликаты ловятся даже без телефона
-    const existingExt = new Set(
-      (await q("SELECT external_id FROM clients WHERE external_id IS NOT NULL")).rows.map((x) => x.external_id));
+    // ID из прежней CRM — по ним дубликаты ловятся даже у клиентов без телефона
+    const idByExt = new Map(
+      (await q("SELECT id, external_id FROM clients WHERE external_id IS NOT NULL")).rows
+        .map((x) => [x.external_id, x.id]));
 
-    let created = 0, skipped = 0;
+    let created = 0, skipped = 0, updated = 0;
     const errors = [];
     await tx(async (c) => {
       for (let i = 0; i < data.length; i++) {
@@ -192,9 +214,9 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
         const phoneRaw = get("phone");
         const pn = normPhone(phoneRaw);
         const extId = get("external_id") || null;
-        if (skipDup && ((pn && existing.has(pn)) || (extId && existingExt.has(extId)))) { skipped++; continue; }
-        if (pn) existing.add(pn);
-        if (extId) existingExt.add(extId);
+        // клиент, уже заведённый в базе: ищем по ID прежней CRM, затем по телефону
+        const dupId = (extId && idByExt.get(extId)) || (pn && idByPhone.get(pn)) || null;
+        if (dupId && !updateExisting && skipDup) { skipped++; continue; }
 
         const noteParts = [];
         mapping.forEach((m, col) => {
@@ -227,26 +249,57 @@ r.post("/clients", upload.single("file"), async (req, res, next) => {
         let managerId = null;
         const managerRaw = get("manager");
         if (managerRaw) {
-          managerId = adminByName.get(managerRaw.trim().toLowerCase()) || null;
-          if (!managerId) managersNotFound.add(managerRaw.trim());
+          const key = managerRaw.trim().toLowerCase();
+          // сначала то, что выбрали руками в мастере, потом совпадение по имени/почте
+          managerId = managerByValue.has(key) ? managerByValue.get(key)
+                                              : (adminByName.get(key) || null);
+          if (!managerId && !managerByValue.has(key)) managersNotFound.add(managerRaw.trim());
         }
 
+        // статус трогаем, только если колонка со статусом выбрана
+        const statusVal = mapping.includes("status") ? parseStatus(get("status")) : null;
+        const vals = [name, phoneRaw || null, get("email") || null, parseBirthdate(get("birthdate")),
+                      noteParts.join("; "), rowBranch, discount,
+                      parseGender(get("gender")), get("parent_name") || null, get("parent_phone") || null,
+                      get("source") || null, extId, managerId, statusVal];
+
         try {
-          await c.query(
-            `INSERT INTO clients(name, phone, email, birthdate, notes, branch_id, discount_percent,
-                                 referral_code, gender, parent_name, parent_phone, source, external_id,
-                                 manager_id, status, created_at)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, COALESCE($16::timestamptz, now()))`,
-            [name, phoneRaw || null, get("email") || null, parseBirthdate(get("birthdate")),
-             noteParts.join("; "), rowBranch, discount, refCode(),
-             parseGender(get("gender")), get("parent_name") || null, get("parent_phone") || null,
-             get("source") || null, extId, managerId, parseStatus(get("status")),
-             parseDateTime(get("created_at"))]);
-          created++;
+          if (dupId && updateExisting) {
+            // дополняем карточку: пустые значения из файла ничего не затирают
+            await c.query(
+              `UPDATE clients SET
+                 name             = COALESCE(NULLIF($1,''), name),
+                 phone            = COALESCE(NULLIF($2,''), phone),
+                 email            = COALESCE(NULLIF($3,''), email),
+                 birthdate        = COALESCE($4::date, birthdate),
+                 notes            = CASE WHEN $5 <> '' THEN $5 ELSE notes END,
+                 branch_id        = COALESCE($6::uuid, branch_id),
+                 discount_percent = CASE WHEN $7::numeric > 0 THEN $7 ELSE discount_percent END,
+                 gender           = COALESCE($8, gender),
+                 parent_name      = COALESCE(NULLIF($9,''), parent_name),
+                 parent_phone     = COALESCE(NULLIF($10,''), parent_phone),
+                 source           = COALESCE(NULLIF($11,''), source),
+                 external_id      = COALESCE(external_id, NULLIF($12,'')),
+                 manager_id       = COALESCE($13::uuid, manager_id),
+                 status           = COALESCE($14, status)
+               WHERE id=$15`, [...vals, dupId]);
+            updated++;
+          } else {
+            const { rows: [ins] } = await c.query(
+              `INSERT INTO clients(name, phone, email, birthdate, notes, branch_id, discount_percent,
+                                   gender, parent_name, parent_phone, source, external_id,
+                                   manager_id, status, referral_code, created_at)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, COALESCE($14,'active'), $15,
+                      COALESCE($16::timestamptz, now())) RETURNING id`,
+              [...vals, refCode(), parseDateTime(get("created_at"))]);
+            created++;
+            if (pn) idByPhone.set(pn, ins.id);
+            if (extId) idByExt.set(extId, ins.id);
+          }
         } catch (e) { errors.push({ row: rowNum, reason: e.message.slice(0, 80) }); }
       }
     });
-    res.json({ created, skipped, errors: errors.slice(0, 20), errors_total: errors.length,
+    res.json({ created, updated, skipped, errors: errors.slice(0, 20), errors_total: errors.length,
                created_branches: createdBranches, managers_not_found: [...managersNotFound].slice(0, 10) });
   } catch (e) { res.status(e.status || 500).json({ error: "Импорт не удался: " + e.message }); }
 });

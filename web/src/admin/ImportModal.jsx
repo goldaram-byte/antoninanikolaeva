@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Upload, FileSpreadsheet } from "lucide-react";
-import { getToken } from "../api.js";
+import { api, getToken } from "../api.js";
 import { Modal, Field, inputCls, btnPrimary, btnGhost } from "../ui.jsx";
 
 const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:4000" : "");
@@ -65,6 +65,10 @@ export default function ImportModal({ branches, onClose, onDone }) {
   const [branchId, setBranchId] = useState("");
   const [skipDup, setSkipDup] = useState(true);
   const [createBranches, setCreateBranches] = useState(true);
+  const [updateExisting, setUpdateExisting] = useState(false);
+  const [managers, setManagers] = useState([]);
+  const [managerMap, setManagerMap] = useState({});   // «значение в файле» → id сотрудника
+  useEffect(() => { api.get("/api/catalog/managers").then(setManagers).catch(() => {}); }, []);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -81,6 +85,24 @@ export default function ImportModal({ branches, onClose, onDone }) {
   };
 
   const byBranchColumn = mapping.includes("branch_name");
+  const managerCol = mapping.indexOf("manager");
+  const managerValues = managerCol >= 0 ? (preview?.options?.[managerCol] || []) : [];
+
+  // как только выбрали колонку «Ответственный» — подставляем совпадения по имени/почте
+  useEffect(() => {
+    if (managerValues.length === 0 || managers.length === 0) return;
+    setManagerMap((prev) => {
+      const next = { ...prev };
+      for (const v of managerValues) {
+        if (next[v] !== undefined) continue;
+        const key = v.trim().toLowerCase();
+        const m = managers.find((x) => x.name.trim().toLowerCase() === key
+          || x.name.trim().toLowerCase().startsWith(key));
+        next[v] = m ? m.id : "";
+      }
+      return next;
+    });
+  }, [managerValues.join("|"), managers.length]);   // eslint-disable-line
   const filled = preview?.filled || [];
   // колонки с данными, которые сейчас никуда не идут — их не должно остаться
   const lostCols = mapping.map((m, i) => (m === "skip" && (filled[i] ?? 0) > 0 ? i : -1)).filter((i) => i >= 0);
@@ -96,6 +118,8 @@ export default function ImportModal({ branches, onClose, onDone }) {
         branch_id: branchId,
         skip_duplicates: skipDup ? "1" : "0",
         create_branches: createBranches ? "1" : "0",
+        manager_map: JSON.stringify(managerMap),
+        update_existing: updateExisting ? "1" : "0",
       });
       setResult(r);
     } catch (e) { setErr(e.message); }
@@ -154,6 +178,28 @@ export default function ImportModal({ branches, onClose, onDone }) {
                 «Филиал (из этой колонки)» разложит клиентов по филиалам прямо из файла.
               </p>
 
+              {managerValues.length > 0 && (
+                <div className="mt-3 rounded-lg border border-slate-200 p-3">
+                  <div className="mb-2 text-sm font-medium text-slate-700">Кто есть кто: ответственные из файла</div>
+                  <div className="space-y-2">
+                    {managerValues.map((v) => (
+                      <div key={v} className="grid grid-cols-2 items-center gap-3">
+                        <div className="truncate text-sm text-slate-600">«{v}»</div>
+                        <select className={inputCls} value={managerMap[v] ?? ""}
+                          onChange={(e) => setManagerMap((m) => ({ ...m, [v]: e.target.value }))}>
+                          <option value="">— не назначать —</option>
+                          {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">
+                    В прежней системе сотрудники назывались иначе — укажите, кому из ваших сотрудников
+                    соответствует каждое значение. Сотрудники берутся из Настроек → Сотрудники.
+                  </p>
+                </div>
+              )}
+
               {lostCols.length > 0 ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <span>
@@ -179,8 +225,13 @@ export default function ImportModal({ branches, onClose, onDone }) {
               </Field>
               <div className="space-y-2 pt-6">
                 <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" className="h-4 w-4" checked={skipDup} onChange={(e) => setSkipDup(e.target.checked)} />
+                  <input type="checkbox" className="h-4 w-4" checked={skipDup} disabled={updateExisting}
+                    onChange={(e) => setSkipDup(e.target.checked)} />
                   Пропускать дубликаты по телефону
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" className="h-4 w-4" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
+                  Обновлять уже заведённых клиентов
                 </label>
                 {byBranchColumn && (
                   <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -197,6 +248,7 @@ export default function ImportModal({ branches, onClose, onDone }) {
           <div className="space-y-3">
             <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               ✓ Импортировано клиентов: <b>{result.created}</b>
+              {result.updated > 0 && <> · обновлено: <b>{result.updated}</b></>}
               {result.skipped > 0 && <> · пропущено дубликатов: <b>{result.skipped}</b></>}
             </div>
             {result.created_branches?.length > 0 && (
