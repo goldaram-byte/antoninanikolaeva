@@ -146,6 +146,76 @@ r.put("/:id", can("clients_edit"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Массовые действия над выбранными клиентами: прикрепить/открепить тренера,
+// направление или группу расписания, перевести в активные/неактивные.
+r.post("/bulk", can("clients_edit"), async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
+    const action = String(req.body?.action || "");
+    if (ids.length === 0) return res.status(400).json({ error: "Не выбран ни один клиент" });
+
+    // тренеру с режимом «только свои» — только его клиенты
+    const own = ownTrainer(req);
+    const { rows } = await q(
+      `SELECT c.id FROM clients c
+        WHERE c.id = ANY($1::uuid[])
+          AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$2))`,
+      [ids, own]);
+    const allowed = rows.map((x) => x.id);
+    if (allowed.length === 0) return res.status(403).json({ error: "Нет доступа к выбранным клиентам" });
+
+    const trainerId = req.body?.trainer_id || null;
+    const disciplineId = req.body?.discipline_id || null;
+    const sessionId = req.body?.session_id || null;
+
+    await tx(async (c) => {
+      switch (action) {
+        case "trainer_add":
+          if (!trainerId) throw Object.assign(new Error("Не выбран тренер"), { status: 400 });
+          await c.query(
+            `INSERT INTO client_trainers(client_id, trainer_id)
+             SELECT unnest($1::uuid[]), $2 ON CONFLICT DO NOTHING`, [allowed, trainerId]);
+          break;
+        case "trainer_remove":
+          if (!trainerId) throw Object.assign(new Error("Не выбран тренер"), { status: 400 });
+          await c.query("DELETE FROM client_trainers WHERE client_id = ANY($1::uuid[]) AND trainer_id=$2", [allowed, trainerId]);
+          break;
+        case "discipline_add":
+          if (!disciplineId) throw Object.assign(new Error("Не выбрано направление"), { status: 400 });
+          await c.query(
+            `INSERT INTO client_disciplines(client_id, discipline_id)
+             SELECT unnest($1::uuid[]), $2 ON CONFLICT DO NOTHING`, [allowed, disciplineId]);
+          break;
+        case "discipline_remove":
+          if (!disciplineId) throw Object.assign(new Error("Не выбрано направление"), { status: 400 });
+          await c.query("DELETE FROM client_disciplines WHERE client_id = ANY($1::uuid[]) AND discipline_id=$2", [allowed, disciplineId]);
+          break;
+        case "session_add":
+          if (!sessionId) throw Object.assign(new Error("Не выбрана группа расписания"), { status: 400 });
+          await c.query(
+            `INSERT INTO client_sessions(client_id, session_id)
+             SELECT unnest($1::uuid[]), $2 ON CONFLICT DO NOTHING`, [allowed, sessionId]);
+          break;
+        case "session_remove":
+          if (!sessionId) throw Object.assign(new Error("Не выбрана группа расписания"), { status: 400 });
+          await c.query("DELETE FROM client_sessions WHERE client_id = ANY($1::uuid[]) AND session_id=$2", [allowed, sessionId]);
+          break;
+        case "status_active":
+        case "status_inactive":
+          await c.query("UPDATE clients SET status=$2 WHERE id = ANY($1::uuid[])",
+            [allowed, action === "status_active" ? "active" : "inactive"]);
+          break;
+        default:
+          throw Object.assign(new Error("Неизвестное действие"), { status: 400 });
+      }
+    });
+    res.json({ ok: true, affected: allowed.length, skipped: ids.length - allowed.length });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
 // Быстрое переключение статуса из карточки (без открытия формы)
 r.put("/:id/status", can("clients_edit"), async (req, res, next) => {
   try {

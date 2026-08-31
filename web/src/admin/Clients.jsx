@@ -4,6 +4,7 @@ import { Plus, Search, Pencil, Upload } from "lucide-react";
 import { api, hasPerm } from "../api.js";
 import { Header, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
 import ImportModal from "./ImportModal.jsx";
+import { WEEKDAYS } from "./Schedule.jsx";
 
 export default function Clients() {
   const [list, setList] = useState(null);
@@ -18,6 +19,11 @@ export default function Clients() {
   const [managers, setManagers] = useState([]);
   const [edit, setEdit] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [sel, setSel] = useState(() => new Set());   // выделенные клиенты
+  const [sessions, setSessions] = useState([]);      // группы расписания
+  const [bulk, setBulk] = useState({ trainer: "", disc: "", session: "" });
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState("");
 
   const load = async () => {
     const params = new URLSearchParams();
@@ -33,8 +39,39 @@ export default function Clients() {
     api.get("/api/catalog/trainers").then(setTrainers).catch(() => {});
     api.get("/api/catalog/disciplines").then(setDisc).catch(() => {});
     api.get("/api/catalog/managers").then(setManagers).catch(() => {});
+    api.get("/api/schedule").then(setSessions).catch(() => {});   // может быть недоступно по правам
   }, []);
-  useEffect(() => { load().catch(() => setList([])); /* eslint-disable-next-line */ }, [q, fBranch, fTrainer, fManager, fStatus]);
+  useEffect(() => {
+    setSel(new Set()); setBulkMsg("");
+    load().catch(() => setList([]));
+    /* eslint-disable-next-line */
+  }, [q, fBranch, fTrainer, fManager, fStatus]);
+
+  const toggleOne = (id) => setSel((p) => {
+    const n = new Set(p);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+  const allChecked = !!list?.length && list.every((c) => sel.has(c.id));
+  const toggleAll = () => setSel(allChecked ? new Set() : new Set((list || []).map((c) => c.id)));
+
+  // Массовое действие над выделенными
+  const runBulk = async (action, extra = {}, confirmText) => {
+    if (sel.size === 0) return;
+    if (confirmText && !confirm(`${confirmText} Выбрано клиентов: ${sel.size}.`)) return;
+    setBulkBusy(true); setBulkMsg("");
+    try {
+      const r = await api.post("/api/clients/bulk", { ids: [...sel], action, ...extra });
+      setBulkMsg(`Готово. Изменено клиентов: ${r.affected}.`);
+      setSel(new Set());
+      await load();
+    } catch (e) { setBulkMsg(e.message); }
+    finally { setBulkBusy(false); }
+  };
+
+  const sessionLabel = (s) =>
+    `${WEEKDAYS[s.day_of_week]} ${String(s.start_time).slice(0, 5)} · ${s.title || s.discipline_name || "Занятие"}` +
+    (s.branch_name ? ` · ${s.branch_name}` : "");
 
   return (
     <div className="space-y-5">
@@ -70,16 +107,60 @@ export default function Clients() {
         </select>
       </div>
 
+      {hasPerm("clients_edit") && sel.size > 0 && (
+        <div className="space-y-2 rounded-xl border border-brand/30 bg-red-50/60 p-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold text-slate-800">Выбрано: {sel.size}</span>
+            <button className="text-xs text-slate-500 hover:underline" onClick={() => setSel(new Set())}>снять выделение</button>
+            <span className="ml-auto flex gap-2">
+              <button className={btnGhost} disabled={bulkBusy}
+                onClick={() => runBulk("status_active", {}, "Сделать выбранных клиентов активными?")}>Сделать активными</button>
+              <button className={btnGhost} disabled={bulkBusy}
+                onClick={() => runBulk("status_inactive", {}, "Сделать выбранных клиентов неактивными?")}>Сделать неактивными</button>
+            </span>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <BulkRow label="Тренер" value={bulk.trainer} onChange={(v) => setBulk({ ...bulk, trainer: v })}
+              options={trainers.map((t) => ({ id: t.id, name: t.name }))} busy={bulkBusy}
+              onAdd={() => runBulk("trainer_add", { trainer_id: bulk.trainer })}
+              onRemove={() => runBulk("trainer_remove", { trainer_id: bulk.trainer }, "Открепить выбранных клиентов от тренера?")} />
+
+            <BulkRow label="Направление" value={bulk.disc} onChange={(v) => setBulk({ ...bulk, disc: v })}
+              options={disc.map((d) => ({ id: d.id, name: d.name }))} busy={bulkBusy}
+              onAdd={() => runBulk("discipline_add", { discipline_id: bulk.disc })}
+              onRemove={() => runBulk("discipline_remove", { discipline_id: bulk.disc }, "Убрать направление у выбранных клиентов?")} />
+
+            <BulkRow label="Группа расписания" value={bulk.session} onChange={(v) => setBulk({ ...bulk, session: v })}
+              options={sessions.map((x) => ({ id: x.id, name: sessionLabel(x) }))} busy={bulkBusy}
+              onAdd={() => runBulk("session_add", { session_id: bulk.session })}
+              onRemove={() => runBulk("session_remove", { session_id: bulk.session }, "Убрать выбранных клиентов из группы?")} />
+          </div>
+        </div>
+      )}
+      {bulkMsg && <div className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-600">{bulkMsg}</div>}
+
       {!list ? <Spinner /> : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           {list.length === 0 ? <Empty text="Никого не нашлось." />
             : <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
-                <tr><th className="px-4 py-2.5">Имя</th><th className="px-4 py-2.5">Филиал</th><th className="px-4 py-2.5">Тренеры</th><th className="px-4 py-2.5">Ответственный</th><th className="px-4 py-2.5">Телефон</th><th className="px-4 py-2.5">Долг</th><th></th></tr>
+                <tr>
+                  {hasPerm("clients_edit") && (
+                    <th className="px-4 py-2.5">
+                      <input type="checkbox" className="h-4 w-4 align-middle" checked={allChecked} onChange={toggleAll} title="Выделить всех в выборке" />
+                    </th>
+                  )}
+                  <th className="px-4 py-2.5">Имя</th><th className="px-4 py-2.5">Филиал</th><th className="px-4 py-2.5">Тренеры</th><th className="px-4 py-2.5">Ответственный</th><th className="px-4 py-2.5">Телефон</th><th className="px-4 py-2.5">Долг</th><th></th></tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {list.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50">
+                  <tr key={c.id} className={sel.has(c.id) ? "bg-red-50/50" : "hover:bg-slate-50"}>
+                    {hasPerm("clients_edit") && (
+                      <td className="px-4 py-3">
+                        <input type="checkbox" className="h-4 w-4 align-middle" checked={sel.has(c.id)} onChange={() => toggleOne(c.id)} />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <Link to={`/admin/clients/${c.id}`} className="font-medium text-slate-900 hover:text-brand">{c.name}</Link>
                       {c.status === "inactive" && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">неактивный</span>}
@@ -103,6 +184,20 @@ export default function Clients() {
         onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
       {importOpen && <ImportModal branches={branches}
         onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); load(); }} />}
+    </div>
+  );
+}
+
+// Строка панели массовых действий: выбор значения + «прикрепить / открепить»
+function BulkRow({ label, value, onChange, options, onAdd, onRemove, busy }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <select className={inputCls + " min-w-0 flex-1"} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">{label} —</option>
+        {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+      </select>
+      <button className={btnGhost + " px-2"} disabled={!value || busy} onClick={onAdd} title={`Прикрепить: ${label.toLowerCase()}`}>+</button>
+      <button className={btnGhost + " px-2"} disabled={!value || busy} onClick={onRemove} title={`Открепить: ${label.toLowerCase()}`}>−</button>
     </div>
   );
 }
