@@ -8,7 +8,8 @@
     "dev": "node --watch src/index.js",
     "migrate": "node src/migrate.js",
     "seed": "node src/seed.js",
-    "set-admin": "node src/setadmin.js"
+    "set-admin": "node src/setadmin.js",
+    "reset-clients": "node src/resetclients.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
