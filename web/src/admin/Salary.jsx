@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Header, Empty, Spinner, inputCls, money } from "../ui.jsx";
 
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join(".") : "—");
@@ -9,7 +8,6 @@ const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("."
 // Зарплата тренеров за месяц: процент от оплат ИЛИ оклад + процент.
 // База — оплаты по абонементам, привязанным к тренеру (тренер выбирается при выдаче).
 export default function Salary() {
-  const { currency } = useSettings();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [data, setData] = useState(null);
   const [details, setDetails] = useState({});     // trainerId -> rows
@@ -54,10 +52,10 @@ export default function Salary() {
                     <td className="px-4 py-3 text-slate-500">
                       {t.salary_mode === "salary_percent" ? `оклад + ${t.percent}%` : `${t.percent}% от оплат`}
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-600">{money(t.revenue, currency)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{t.base > 0 ? money(t.base, currency) : "—"}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{money(t.from_percent, currency)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-900">{money(t.total, currency)}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{money(t.revenue)}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{t.base > 0 ? money(t.base) : "—"}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{money(t.from_percent)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-slate-900">{money(t.total)}</td>
                   </tr>
                   {details[t.id] && (
                     <tr key={t.id + "-d"}>
@@ -69,7 +67,7 @@ export default function Salary() {
                                 <span className="w-20 text-slate-400">{fmtDate(p.created_at)}</span>
                                 <Link to={`/admin/clients/${p.client_id}`} className="font-medium hover:text-brand">{p.client_name}</Link>
                                 <span className="text-slate-400">{p.sub_name}</span>
-                                <span className="ml-auto font-semibold text-emerald-600">{money(p.amount, currency)}</span>
+                                <span className="ml-auto font-semibold text-emerald-600">{money(p.amount)}</span>
                               </li>
                             ))}
                           </ul>}
@@ -82,7 +80,7 @@ export default function Salary() {
             <tfoot>
               <tr className="border-t border-slate-200 bg-slate-50">
                 <td colSpan={5} className="px-4 py-3 text-right text-sm font-medium text-slate-500">Фонд оплаты за месяц:</td>
-                <td className="px-4 py-3 text-right text-lg font-bold text-brand-dark">{money(data.total, currency)}</td>
+                <td className="px-4 py-3 text-right text-lg font-bold text-brand-dark">{money(data.total)}</td>
               </tr>
             </tfoot>
           </table>

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { api } from "./api.js";
 
 // Общие настройки центра (название, валюта) — доступны в обоих приложениях
-const Ctx = createContext({ settings: {}, currency: "₽", clubName: "", reload: () => {} });
+const Ctx = createContext({ settings: {}, clubName: "", reload: () => {} });
 export const useSettings = () => useContext(Ctx);
 
 export function SettingsProvider({ children }) {
@@ -14,7 +14,6 @@ export function SettingsProvider({ children }) {
   return (
     <Ctx.Provider value={{
       settings,
-      currency: settings.currency || "₽",
       clubName: settings.club_name || "Школа каратэ Николаевой Антонины",
       reload,
     }}>

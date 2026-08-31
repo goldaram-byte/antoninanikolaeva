@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Users, Ticket, AlertCircle, Wallet } from "lucide-react";
 import { api } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Header, Panel, Empty, Spinner, money, inputCls } from "../ui.jsx";
 
 export default function Dashboard() {
-  const { currency } = useSettings();
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState("");        // "" = все филиалы
   const [data, setData] = useState(null);
@@ -40,8 +38,8 @@ export default function Dashboard() {
           <Card icon={Users} label="Клиентов" value={data.clients} tone="text-blue-500" />
           <Card icon={Ticket} label="Активных абонементов" value={data.active_subs} tone="text-emerald-500" />
           {data.can_finance && <>
-            <Card icon={Wallet} label="Выручка за месяц" value={money(data.month_income, currency)} tone="text-brand" />
-            <Card icon={AlertCircle} label={`Долг (${data.debtors} чел.)`} value={money(data.debt, currency)} tone="text-red-500" />
+            <Card icon={Wallet} label="Выручка за месяц" value={money(data.month_income)} tone="text-brand" />
+            <Card icon={AlertCircle} label={`Долг (${data.debtors} чел.)`} value={money(data.debt)} tone="text-red-500" />
           </>}
         </div>
 
@@ -63,8 +61,8 @@ export default function Dashboard() {
                       <td className="py-2.5 pr-4">{b.clients}</td>
                       <td className="py-2.5 pr-4">{b.active_subs}</td>
                       {data.can_finance && <>
-                        <td className="py-2.5 pr-4 font-medium text-emerald-600">{money(b.month_income, currency)}</td>
-                        <td className="py-2.5">{Number(b.debt) > 0 ? <span className="font-medium text-red-600">{money(b.debt, currency)}</span> : <span className="text-slate-300">—</span>}</td>
+                        <td className="py-2.5 pr-4 font-medium text-emerald-600">{money(b.month_income)}</td>
+                        <td className="py-2.5">{Number(b.debt) > 0 ? <span className="font-medium text-red-600">{money(b.debt)}</span> : <span className="text-slate-300">—</span>}</td>
                       </>}
                     </tr>
                   ))}
@@ -83,7 +81,7 @@ export default function Dashboard() {
                   <Link to={`/admin/clients/${p.client_id}`} className="min-w-0 flex-1 truncate font-medium text-slate-800 hover:text-brand">{p.client_name}</Link>
                   {p.branch_name && <span className="hidden rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 sm:inline">{p.branch_name}</span>}
                   <span className="text-xs text-slate-400">{p.method}</span>
-                  <span className="font-semibold text-emerald-600">{money(p.amount, currency)}</span>
+                  <span className="font-semibold text-emerald-600">{money(p.amount)}</span>
                 </li>
               ))}
             </ul>}

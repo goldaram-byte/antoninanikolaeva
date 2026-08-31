@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
 
 export const METHODS = ["наличные", "перевод", "расчётный счёт", "онлайн"];
@@ -10,7 +9,6 @@ export const METHODS = ["наличные", "перевод", "расчётны�
 // (например, клиент пришёл с середины месяца — сумма вводится вручную,
 // скидка к своей цене не применяется, баллы применимы).
 export default function BuyModal({ client, branches, trainers, onClose, onDone }) {
-  const { currency } = useSettings();
   const [types, setTypes] = useState([]);
   const [f, setF] = useState({
     sub_type_id: "", branch_id: client.branch_id || "", trainer_id: "",
@@ -60,7 +58,7 @@ export default function BuyModal({ client, branches, trainers, onClose, onDone }
       footer={<>
         <button className={btnGhost} onClick={onClose}>Отмена</button>
         <button className={btnPrimary} disabled={busy || !type} onClick={submit}>
-          {busy ? "Оформляем…" : f.paidNow ? `Выдать за ${money(final, currency)}` : "Выдать в долг"}
+          {busy ? "Оформляем…" : f.paidNow ? `Выдать за ${money(final)}` : "Выдать в долг"}
         </button>
       </>}>
       <div className="space-y-4">
@@ -109,8 +107,8 @@ export default function BuyModal({ client, branches, trainers, onClose, onDone }
             </div>
           ) : (
             type && <p className="mt-2 text-xs text-slate-500">
-              Цена по тарифу: <b>{money(basePrice, currency)}</b>
-              {disc > 0 && <> · скидка {disc}% → <b>{money(afterDiscount, currency)}</b></>}
+              Цена по тарифу: <b>{money(basePrice)}</b>
+              {disc > 0 && <> · скидка {disc}% → <b>{money(afterDiscount)}</b></>}
             </p>
           )}
         </div>
@@ -146,7 +144,7 @@ export default function BuyModal({ client, branches, trainers, onClose, onDone }
 
         {type && (
           <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
-            К оплате: <b className="text-lg text-brand-dark">{money(final, currency)}</b>
+            К оплате: <b className="text-lg text-brand-dark">{money(final)}</b>
             {usePts > 0 && <span className="text-slate-500"> (баллами: {usePts})</span>}
           </div>
         )}

@@ -24,7 +24,6 @@ async function run() {
   // Настройки центра (можно менять в админке)
   const settings = {
     club_name: "Школа каратэ Николаевой Антонины",
-    currency: "₽",
     loyalty_cashback_percent: "0",        // % баллов с покупок
     referral_referrer_percent: "5",       // % пригласившему с первой покупки друга
     referral_friend_percent: "0",         // бонус самому другу

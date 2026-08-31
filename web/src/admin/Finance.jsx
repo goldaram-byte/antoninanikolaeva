@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { api, hasPerm } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Header, Panel, Empty, Spinner, inputCls, money } from "../ui.jsx";
 import { METHODS } from "./BuyModal.jsx";
 
@@ -11,7 +10,6 @@ const monthStart = () => { const d = new Date(); return `${d.getFullYear()}-${St
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function Finance() {
-  const { currency } = useSettings();
   const [tab, setTab] = useState("ops");           // ops | debtors
   const [branches, setBranches] = useState([]);
   const [f, setF] = useState({ from: monthStart(), to: today(), method: "", branch_id: "" });
@@ -40,7 +38,7 @@ export default function Finance() {
   }, [f.branch_id]);
 
   const refund = async (p) => {
-    if (!confirm(`Оформить возврат ${money(p.amount, currency)} по оплате «${p.note || p.method}»?`)) return;
+    if (!confirm(`Оформить возврат ${money(p.amount)} по оплате «${p.note || p.method}»?`)) return;
     await api.post(`/api/payments/${p.id}/refund`, {}); load();
   };
   const remove = async (p) => {
@@ -82,15 +80,15 @@ export default function Finance() {
       {tab === "ops" && <>
         {sum && (
           <div className="grid grid-cols-3 gap-4">
-            <Stat label="Приход" value={money(sum.income, currency)} cls="text-emerald-600" />
-            <Stat label="Возвраты" value={money(sum.refunds, currency)} cls="text-red-500" />
-            <Stat label="Итого" value={money(sum.net, currency)} cls="text-slate-900" />
+            <Stat label="Приход" value={money(sum.income)} cls="text-emerald-600" />
+            <Stat label="Возвраты" value={money(sum.refunds)} cls="text-red-500" />
+            <Stat label="Итого" value={money(sum.net)} cls="text-slate-900" />
           </div>
         )}
         {sum && sum.byMethod?.length > 0 && (
           <div className="flex flex-wrap gap-2 text-xs">
             {sum.byMethod.map((m) => (
-              <span key={m.method} className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{m.method}: <b>{money(m.sum, currency)}</b></span>
+              <span key={m.method} className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{m.method}: <b>{money(m.sum)}</b></span>
             ))}
           </div>
         )}
@@ -111,7 +109,7 @@ export default function Finance() {
                       <td className="px-4 py-2.5 text-slate-500">{p.branch_name || "—"}</td>
                       <td className="px-4 py-2.5 text-slate-500">{p.method}</td>
                       <td className={`px-4 py-2.5 text-right font-semibold ${p.op_type === "refund" ? "text-red-500" : "text-emerald-600"}`}>
-                        {p.op_type === "refund" ? "−" : ""}{money(p.amount, currency)}
+                        {p.op_type === "refund" ? "−" : ""}{money(p.amount)}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {hasPerm("payments_manage") && p.op_type === "payment" && (
@@ -156,7 +154,7 @@ export default function Finance() {
                           )}
                         </td>
                         <td className="py-2.5 pr-4 text-slate-500">{d.since ? fmtDate(d.since) : (d.last_expiry ? `аб. до ${fmtDate(d.last_expiry)}` : "—")}</td>
-                        <td className="py-2.5 text-right font-semibold text-red-600">{Number(d.debt) > 0 ? money(d.debt, currency) : "—"}</td>
+                        <td className="py-2.5 text-right font-semibold text-red-600">{Number(d.debt) > 0 ? money(d.debt) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>

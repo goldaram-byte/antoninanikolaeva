@@ -348,3 +348,6 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_id UUID REFERENCES admins(i
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS status     TEXT NOT NULL DEFAULT 'active';
 CREATE INDEX IF NOT EXISTS idx_clients_manager ON clients(manager_id);
 CREATE INDEX IF NOT EXISTS idx_clients_status  ON clients(status);
+
+-- Валюта больше не настраивается: все суммы в системе — рубли
+DELETE FROM settings WHERE key = 'currency';

@@ -1,13 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { api } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Header, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
 
 const kindLabel = { sessions: "по занятиям", unlimited: "безлимит" };
 
 export default function Subs() {
-  const { currency } = useSettings();
   const [list, setList] = useState(null);
   const [branches, setBranches] = useState([]);
   const [edit, setEdit] = useState(null);
@@ -45,11 +43,11 @@ export default function Subs() {
                     </div>
                     <button onClick={() => setEdit(s)} className="text-slate-300 hover:text-slate-600"><Pencil size={15} /></button>
                   </div>
-                  <div className="mt-2 text-2xl font-bold text-brand">{money(s.price, currency)}</div>
+                  <div className="mt-2 text-2xl font-bold text-brand">{money(s.price)}</div>
                   {hasBranchPrices && (
                     <ul className="mt-1 space-y-0.5 text-xs text-slate-500">
                       {branches.filter((b) => bp[b.id] != null).map((b) => (
-                        <li key={b.id}>{b.name}: <b>{money(bp[b.id], currency)}</b></li>
+                        <li key={b.id}>{b.name}: <b>{money(bp[b.id])}</b></li>
                       ))}
                     </ul>
                   )}
@@ -70,7 +68,6 @@ export default function Subs() {
 }
 
 function SubForm({ subType, branches, onClose, onSaved }) {
-  const { currency } = useSettings();
   const [f, setF] = useState({
     name: "", kind: "sessions", sessions: 8, days: 30, price: 4000, training_type: "group", ...subType,
     branch_prices: { ...(subType.branch_prices || {}) },
@@ -106,7 +103,7 @@ function SubForm({ subType, branches, onClose, onSaved }) {
           </select>
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label={`Базовая цена, ${currency}`}><input type="number" className={inputCls} value={f.price} onChange={(e) => setF({ ...f, price: +e.target.value })} /></Field>
+          <Field label={`Базовая цена, ₽`}><input type="number" className={inputCls} value={f.price} onChange={(e) => setF({ ...f, price: +e.target.value })} /></Field>
           <Field label="Срок (дней)"><input type="number" className={inputCls} value={f.days} onChange={(e) => setF({ ...f, days: +e.target.value })} /></Field>
         </div>
 

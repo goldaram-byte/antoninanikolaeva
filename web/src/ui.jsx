@@ -4,7 +4,8 @@ export const inputCls = "w-full rounded-lg border border-slate-200 px-3 py-2 tex
 export const btnPrimary = "inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50";
 export const btnGhost = "inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50";
 
-export const money = (v, cur = "₽") => `${Number(v || 0).toLocaleString("ru-RU")} ${cur}`;
+// Все суммы в системе — в рублях
+export const money = (v) => `${Number(v || 0).toLocaleString("ru-RU")} ₽`;
 
 export function Field({ label, children }) {
   return (

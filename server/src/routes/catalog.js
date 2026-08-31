@@ -4,8 +4,9 @@ import { employee, can, canAny } from "../auth.js";
 
 const r = Router();
 
-// Настройки для шапки приложения (название, валюта) — до входа
-const PUBLIC_KEYS = ["club_name", "currency"];
+// Настройки для шапки приложения (название школы) — до входа.
+// Валюта не настраивается: все суммы в системе — рубли.
+const PUBLIC_KEYS = ["club_name"];
 
 r.get("/settings", async (_req, res, next) => {
   try {

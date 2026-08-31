@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Phone, MessageCircle, Send, Plus, Pencil, Ticket, Wallet, ClipboardCheck } from "lucide-react";
 import { api, hasPerm, waLink, tgLink, telLink } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Header, Panel, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
 import { ClientForm } from "./Clients.jsx";
 import BuyModal from "./BuyModal.jsx";
@@ -34,7 +33,6 @@ const years = (n) => {
 export default function ClientDetail() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { currency } = useSettings();
   const [c, setC] = useState(null);
   const [branches, setBranches] = useState([]);
   const [trainers, setTrainers] = useState([]);
@@ -88,7 +86,7 @@ export default function ClientDetail() {
             <a href={tgLink(c.phone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-sm text-white hover:bg-sky-600"><Send size={14} /> Telegram</a>
           </>
         ) : <span className="text-sm text-slate-400">Телефон не указан</span>}
-        {debt > 0 && <span className="ml-auto rounded-lg bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-600">Долг: {money(debt, currency)}</span>}
+        {debt > 0 && <span className="ml-auto rounded-lg bg-red-50 px-3 py-1.5 text-sm font-semibold text-red-600">Долг: {money(debt)}</span>}
       </div>
 
       {/* Родитель — по нему чаще всего и связываются */}
@@ -156,14 +154,14 @@ export default function ClientDetail() {
                     <span className="font-medium text-slate-900">{s.name}</span>
                     {s.branch_name && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{s.branch_name}</span>}
                     {s.trainer_name && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{s.trainer_name}</span>}
-                    {owed > 0 && <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">долг {money(owed, currency)}</span>}
+                    {owed > 0 && <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">долг {money(owed)}</span>}
                     {(expired || usedUp) && <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-500">{expired ? "истёк" : "занятия кончились"}</span>}
-                    <span className="ml-auto text-sm font-semibold text-slate-700">{money(s.price, currency)}</span>
+                    <span className="ml-auto text-sm font-semibold text-slate-700">{money(s.price)}</span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                     <span>{fmtDate(s.purchase_date)} — {fmtDate(s.expiry_date)}</span>
                     <span>{s.kind === "unlimited" ? "безлимит" : `занятий: ${s.sessions_used} / ${s.sessions_total}`}</span>
-                    <span>оплачено: {money(s.paid, currency)}</span>
+                    <span>оплачено: {money(s.paid)}</span>
                     {owed > 0 && hasPerm("payments_manage") && (
                       <button className="ml-auto font-medium text-brand hover:underline" onClick={() => setPay(s)}>Принять оплату</button>
                     )}
@@ -192,8 +190,8 @@ export default function ClientDetail() {
                 <span className="min-w-0 flex-1 truncate text-slate-600">{p.note || "оплата"}</span>
                 <span className="text-xs text-slate-400">{p.method}</span>
                 {p.op_type === "refund"
-                  ? <span className="font-semibold text-red-500">−{money(p.amount, currency)}</span>
-                  : <span className="font-semibold text-emerald-600">{money(p.amount, currency)}</span>}
+                  ? <span className="font-semibold text-red-500">−{money(p.amount)}</span>
+                  : <span className="font-semibold text-emerald-600">{money(p.amount)}</span>}
               </li>
             ))}
           </ul>}

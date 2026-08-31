@@ -2,12 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Search, Pencil, Upload } from "lucide-react";
 import { api, hasPerm } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Header, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
 import ImportModal from "./ImportModal.jsx";
 
 export default function Clients() {
-  const { currency } = useSettings();
   const [list, setList] = useState(null);
   const [branches, setBranches] = useState([]);
   const [trainers, setTrainers] = useState([]);
@@ -92,7 +90,7 @@ export default function Clients() {
                     <td className="px-4 py-3 text-slate-500">
                       {c.phone || (c.parent_phone ? <>{c.parent_phone} <span className="text-xs text-slate-400">(род.)</span></> : "—")}
                     </td>
-                    <td className="px-4 py-3">{Number(c.debt) > 0 ? <span className="font-semibold text-red-600">{money(c.debt, currency)}</span> : <span className="text-slate-400">—</span>}</td>
+                    <td className="px-4 py-3">{Number(c.debt) > 0 ? <span className="font-semibold text-red-600">{money(c.debt)}</span> : <span className="text-slate-400">—</span>}</td>
                     <td className="px-4 py-3 text-right">{hasPerm("clients_edit") && <button onClick={() => setEdit(c)} className="text-slate-400 hover:text-slate-700"><Pencil size={15} /></button>}</td>
                   </tr>
                 ))}

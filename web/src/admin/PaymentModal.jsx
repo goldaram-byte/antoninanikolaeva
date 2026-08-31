@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { api } from "../api.js";
-import { useSettings } from "../settings.jsx";
 import { Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
 import { METHODS } from "./BuyModal.jsx";
 
 // Приём оплаты по долгу: по конкретному абонементу (sub) или по всем долгам клиента по очереди.
 export default function PaymentModal({ client, sub, onClose, onDone }) {
-  const { currency } = useSettings();
   const owed = sub
     ? Math.max(0, Number(sub.price) - Number(sub.paid))
     : (client.subs || []).reduce((a, s) => a + Math.max(0, Number(s.price) - Number(s.paid)), 0);
@@ -33,7 +31,7 @@ export default function PaymentModal({ client, sub, onClose, onDone }) {
         <button className={btnPrimary} disabled={busy} onClick={submit}>{busy ? "Проводим…" : "Принять оплату"}</button>
       </>}>
       <div className="space-y-4">
-        <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Долг: <b className="text-red-600">{money(owed, currency)}</b></p>
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Долг: <b className="text-red-600">{money(owed)}</b></p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Сумма"><input type="number" className={inputCls} value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} autoFocus /></Field>
           <Field label="Способ оплаты">

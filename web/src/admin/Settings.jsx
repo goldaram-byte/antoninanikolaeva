@@ -27,10 +27,6 @@ function General() {
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block"><span className="mb-1 block text-sm font-medium text-slate-600">Название школы</span>
           <input className={inputCls} defaultValue={settings.club_name || ""} onBlur={(e) => setSetting("club_name", e.target.value)} /></label>
-        <label className="block"><span className="mb-1 block text-sm font-medium text-slate-600">Валюта</span>
-          <select className={inputCls} value={settings.currency || "₽"} onChange={(e) => setSetting("currency", e.target.value)}>
-            <option value="₽">₽ рубль</option><option value="€">€ евро</option><option value="$">$ доллар</option><option value="֏">֏ драм</option>
-          </select></label>
       </div>
     </Panel>
   );
@@ -96,7 +92,6 @@ function BranchForm({ branch, onClose, onSaved }) {
 
 // ===== Тренеры: имя + условия зарплаты (процент / оклад + процент) =====
 function Trainers() {
-  const { currency } = useSettings();
   const [list, setList] = useState([]);
   const [edit, setEdit] = useState(null);
   const load = useCallback(async () => setList(await api.get("/api/catalog/trainers")), []);
@@ -117,7 +112,7 @@ function Trainers() {
               <div className="text-sm font-medium text-slate-800">{t.name}</div>
               <div className="text-xs text-slate-400">
                 {t.salary_mode === "salary_percent"
-                  ? `оклад ${Number(t.salary_fixed).toLocaleString("ru-RU")} ${currency} + ${Number(t.percent)}% от оплат`
+                  ? `оклад ${Number(t.salary_fixed).toLocaleString("ru-RU")} ₽ + ${Number(t.percent)}% от оплат`
                   : `${Number(t.percent)}% от оплат`}
               </div>
             </div>
@@ -132,7 +127,6 @@ function Trainers() {
 }
 
 function TrainerForm({ trainer, onClose, onSaved }) {
-  const { currency } = useSettings();
   const isNew = !trainer.id;
   const [f, setF] = useState({ name: "", salary_mode: "percent", salary_fixed: 0, percent: 0, ...trainer });
   const [err, setErr] = useState("");
@@ -158,7 +152,7 @@ function TrainerForm({ trainer, onClose, onSaved }) {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           {f.salary_mode === "salary_percent" && (
-            <Field label={`Оклад в месяц, ${currency}`}><input type="number" className={inputCls} value={f.salary_fixed} onChange={(e) => setF({ ...f, salary_fixed: e.target.value })} /></Field>
+            <Field label={`Оклад в месяц, ₽`}><input type="number" className={inputCls} value={f.salary_fixed} onChange={(e) => setF({ ...f, salary_fixed: e.target.value })} /></Field>
           )}
           <Field label="Процент от оплат, %"><input type="number" className={inputCls} value={f.percent} onChange={(e) => setF({ ...f, percent: e.target.value })} /></Field>
         </div>
@@ -198,7 +192,7 @@ function Disciplines() {
 
 // ===== Лояльность =====
 function Loyalty() {
-  const { settings, currency, reload } = useSettings();
+  const { settings, reload } = useSettings();
   const [all, setAll] = useState({});
   useEffect(() => { api.get("/api/catalog/settings/all").then(setAll).catch(() => {}); }, []);
   const setSetting = async (key, value) => { await api.put(`/api/catalog/settings/${key}`, { value }); reload(); };
@@ -213,7 +207,7 @@ function Loyalty() {
           <span className="mt-1 block text-xs text-slate-400">Баллами с первой покупки приглашённого</span></label>
         <label className="block"><span className="mb-1 block text-sm font-medium text-slate-600">Бонус новичку, %</span>
           <input type="number" className={inputCls} defaultValue={all.referral_friend_percent || "0"} onBlur={(e) => setSetting("referral_friend_percent", e.target.value)} /></label>
-        <label className="block"><span className="mb-1 block text-sm font-medium text-slate-600">Стоимость 1 балла, {currency}</span>
+        <label className="block"><span className="mb-1 block text-sm font-medium text-slate-600">Стоимость 1 балла, ₽</span>
           <input type="number" className={inputCls} defaultValue={all.points_to_currency || "1"} onBlur={(e) => setSetting("points_to_currency", e.target.value)} /></label>
       </div>
       <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Баллы начисляются и списываются при выдаче абонементов. Рейтинг приглашений и ручная корректировка баллов — в разделе «Лояльность».</p>
