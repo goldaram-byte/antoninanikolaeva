@@ -11,11 +11,12 @@
   на сайте оно обновилось само.
 
   По умолчанию показываются ВСЕ филиалы сразу — каждый своим блоком
-  с названием и адресом.
+  с названием и адресом, а сверху стоят кнопки: посетитель может открыть
+  расписание только своего филиала.
 
   Параметры адреса:
-    ?branch=<id филиала>  — показать только один филиал
-    ?tabs=1               — не все сразу, а переключатель филиалов кнопками
+    ?branch=<id филиала>  — жёстко один филиал (кнопок не будет)
+    ?tabs=0               — убрать кнопки выбора филиала
     ?accent=%23dc2626     — свой акцентный цвет (# записывается как %23)
     ?theme=dark           — тёмная тема
     ?trainer=0            — не показывать имена тренеров
@@ -86,7 +87,7 @@
   var p = new URLSearchParams(location.search);
   var fixedBranch = p.get("branch") || "";
   var showTrainer = p.get("trainer") !== "0";
-  var useTabs = p.get("tabs") === "1";           // по умолчанию — все филиалы сразу
+  var useTabs = p.get("tabs") !== "0";           // кнопки выбора филиала
   if (p.get("accent")) document.documentElement.style.setProperty("--accent", p.get("accent"));
   if (p.get("theme") === "dark") document.documentElement.setAttribute("data-theme", "dark");
 
@@ -138,8 +139,8 @@
   var EMPTY = '<div class="err">Расписание скоро появится. Позвоните нам — подскажем ближайшую группу.</div>';
 
   function render() {
-    // режим с кнопками-переключателями или показ одного филиала
-    if (current || useTabs) {
+    // выбран конкретный филиал — показываем только его неделю
+    if (current) {
       var list = data.sessions.filter(function (s) { return !current || s.branch_id === current; });
       out.innerHTML = list.length ? weekHtml(list) : EMPTY;
       var b = data.branches.find(function (x) { return x.id === current; });
@@ -171,6 +172,7 @@
       return data.sessions.some(function (s) { return s.branch_id === b.id; });
     });
     if (fixedBranch || !useTabs || used.length < 2) return;
+    // «Все филиалы» — вид по умолчанию, дальше кнопки по филиалам
     tabsEl.hidden = false;
     tabsEl.innerHTML = "";
     [{ id: "", name: "Все филиалы" }].concat(used).forEach(function (b) {
