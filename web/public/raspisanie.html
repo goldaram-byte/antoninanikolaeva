@@ -10,8 +10,12 @@
   Данные берутся из CRM: /api/public/schedule — обновили расписание в CRM,
   на сайте оно обновилось само.
 
+  По умолчанию показываются ВСЕ филиалы сразу — каждый своим блоком
+  с названием и адресом.
+
   Параметры адреса:
-    ?branch=<id филиала>  — показать только один филиал (без переключателя)
+    ?branch=<id филиала>  — показать только один филиал
+    ?tabs=1               — не все сразу, а переключатель филиалов кнопками
     ?accent=%23dc2626     — свой акцентный цвет (# записывается как %23)
     ?theme=dark           — тёмная тема
     ?trainer=0            — не показывать имена тренеров
@@ -41,6 +45,14 @@
   .tab:hover{color:var(--text)}
   .tab[aria-selected="true"]{background:var(--accent); border-color:transparent; color:#fff}
   .addr{color:var(--muted); font-size:.85rem; margin:0 0 14px}
+  .branch{margin:26px 0 12px}
+  .branch:first-of-type{margin-top:14px}
+  .branch h2{
+    margin:0; font-size:1.15rem; font-weight:800; letter-spacing:-.01em;
+    display:flex; align-items:center; gap:10px;
+  }
+  .branch h2::before{content:""; width:4px; height:20px; border-radius:2px; background:var(--accent)}
+  .branch p{margin:4px 0 0 14px; color:var(--muted); font-size:.85rem}
   .grid{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
   .day{border:1px solid var(--line); border-radius:14px; background:var(--card); overflow:hidden}
   .day h3{
@@ -74,6 +86,7 @@
   var p = new URLSearchParams(location.search);
   var fixedBranch = p.get("branch") || "";
   var showTrainer = p.get("trainer") !== "0";
+  var useTabs = p.get("tabs") === "1";           // по умолчанию — все филиалы сразу
   if (p.get("accent")) document.documentElement.style.setProperty("--accent", p.get("accent"));
   if (p.get("theme") === "dark") document.documentElement.setAttribute("data-theme", "dark");
 
@@ -101,12 +114,8 @@
   // понедельник = 0, как в CRM
   var todayIdx = (new Date().getDay() + 6) % 7;
 
-  function render() {
-    var list = data.sessions.filter(function (s) { return !current || s.branch_id === current; });
-    if (list.length === 0) {
-      out.innerHTML = '<div class="err">Расписание скоро появится. Позвоните нам — подскажем ближайшую группу.</div>';
-      return sendHeight();
-    }
+  // Недельная сетка для набора занятий
+  function weekHtml(list) {
     var html = '<div class="grid">';
     for (var d = 0; d < 7; d++) {
       var items = list.filter(function (s) { return s.day_of_week === d; });
@@ -116,10 +125,6 @@
         var meta = [];
         if (showTrainer && s.trainer_name) meta.push(esc(s.trainer_name));
         if (s.room) meta.push(esc(s.room));
-        if (!current && data.branches.length > 1) {
-          var b = data.branches.find(function (x) { return x.id === s.branch_id; });
-          if (b) meta.push(esc(b.name));
-        }
         html += '<li><span class="time">' + hhmm(s.start_time) + "</span><div class=\"info\">" +
           '<div class="title">' + esc(s.title) + "</div>" +
           (meta.length ? '<div class="meta">' + meta.join(" · ") + "</div>" : "") +
@@ -127,20 +132,45 @@
       });
       html += "</ul></div>";
     }
-    html += "</div>";
-    out.innerHTML = html;
+    return html + "</div>";
+  }
 
-    var b = data.branches.find(function (x) { return x.id === current; });
-    addrEl.textContent = b && b.address ? b.address : "";
-    addrEl.hidden = !addrEl.textContent;
+  var EMPTY = '<div class="err">Расписание скоро появится. Позвоните нам — подскажем ближайшую группу.</div>';
+
+  function render() {
+    // режим с кнопками-переключателями или показ одного филиала
+    if (current || useTabs) {
+      var list = data.sessions.filter(function (s) { return !current || s.branch_id === current; });
+      out.innerHTML = list.length ? weekHtml(list) : EMPTY;
+      var b = data.branches.find(function (x) { return x.id === current; });
+      addrEl.textContent = b && b.address ? b.address : "";
+      addrEl.hidden = !addrEl.textContent;
+      return sendHeight();
+    }
+
+    // по умолчанию: все филиалы сразу, каждый своим блоком
+    addrEl.hidden = true;
+    var html = "";
+    data.branches.forEach(function (b) {
+      var list = data.sessions.filter(function (s) { return s.branch_id === b.id; });
+      if (list.length === 0) return;                      // пустые филиалы не показываем
+      html += '<div class="branch"><h2>' + esc(b.name) + "</h2>" + addrHtml(b) + "</div>" + weekHtml(list);
+    });
+    // занятия без филиала — отдельным блоком в конце
+    var noBranch = data.sessions.filter(function (s) { return !s.branch_id; });
+    if (noBranch.length) html += '<div class="branch"><h2>Другие занятия</h2></div>' + weekHtml(noBranch);
+
+    out.innerHTML = html || EMPTY;
     sendHeight();
   }
+
+  function addrHtml(b) { return b.address ? "<p>" + esc(b.address) + "</p>" : ""; }
 
   function renderTabs() {
     var used = data.branches.filter(function (b) {
       return data.sessions.some(function (s) { return s.branch_id === b.id; });
     });
-    if (fixedBranch || used.length < 2) return;
+    if (fixedBranch || !useTabs || used.length < 2) return;
     tabsEl.hidden = false;
     tabsEl.innerHTML = "";
     [{ id: "", name: "Все филиалы" }].concat(used).forEach(function (b) {

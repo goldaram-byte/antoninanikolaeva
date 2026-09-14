@@ -234,7 +234,9 @@ window.addEventListener("message", function (e) {
         </div>
         <textarea readOnly rows={6} className={inputCls + " font-mono text-xs"} value={code} onFocus={(e) => e.target.select()} />
         <p className="mt-1 text-xs text-slate-400">
-          Можно добавить к адресу параметры: <code>?branch=ID</code> — один филиал,
+          По умолчанию на сайте показываются все филиалы сразу — каждый своим блоком с адресом.
+          Параметры адреса: <code>?branch=ID</code> — только один филиал,
+          <code> ?tabs=1</code> — вместо всех сразу кнопки-переключатели,
           <code> ?theme=dark</code> — тёмная тема, <code> ?trainer=0</code> — без имён тренеров.
         </p>
       </div>
