@@ -21,63 +21,128 @@
     ?theme=dark           — тёмная тема
     ?trainer=0            — не показывать имена тренеров
 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&display=swap" rel="stylesheet">
 <style>
+  /* ── Оформление ───────────────────────────────────────────────────────
+     Фирменные цвета школы: красный / чёрный / белый. Серые слегка
+     «подкрашены» в тёплый, чтобы не выглядеть мёртвыми рядом с красным.
+     Заголовки — узкий гротеск Oswald (характер додзё), текст — системный
+     шрифт: быстро грузится и одинаково читается на всех устройствах. */
   :root{
-    --accent:#dc2626; --bg:#ffffff; --card:#ffffff; --line:#e8e8ea;
-    --text:#111113; --muted:#6b7280; --chip:#f5f5f7;
-    font-size:16px;
+    --accent:#dc2626;
+    --accent-soft:rgba(220,38,38,.10);
+    --bg:#ffffff;
+    --surface:#ffffff;
+    --hair:#f0eeef;                     /* волосяная линия между занятиями */
+    --ink:#111013;                      /* основной текст */
+    --ink-2:#4b4a51;                    /* второстепенный */
+    --muted:#8a8791;                    /* подписи */
+    --chip:#f4f2f3;
+    --chip-hover:#eceaec;
+    --shadow:0 1px 1px rgba(17,16,19,.04), 0 10px 24px -12px rgba(17,16,19,.16);
+    --radius:16px;
+    --display:"Oswald","Arial Narrow",Impact,system-ui,sans-serif;
+    --text:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   }
   [data-theme="dark"]{
-    --bg:#0d0d0f; --card:#17171a; --line:#2a2a30; --text:#f4f4f5; --muted:#9ca3af; --chip:#212127;
+    --bg:#0c0c0e; --surface:#161618; --hair:#262629;
+    --ink:#f6f5f7; --ink-2:#c9c7cd; --muted:#8d8a93;
+    --chip:#1f1f22; --chip-hover:#2a2a2e;
+    --shadow:0 1px 1px rgba(0,0,0,.4), 0 12px 28px -16px rgba(0,0,0,.8);
   }
+
   *{box-sizing:border-box}
   body{
-    margin:0; padding:0; background:var(--bg); color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--text); font-size:16px; line-height:1.45;
     -webkit-font-smoothing:antialiased;
   }
-  .wrap{max-width:1100px; margin:0 auto; padding:4px 16px 24px}
-  .tabs{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 16px}
+  .wrap{max-width:1120px; margin:0 auto; padding:8px 20px 28px}
+
+  /* ── Переключатель филиалов ───────────────────────────────────────── */
+  .tabs{display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 24px}
   .tab{
-    border:1px solid var(--line); background:var(--card); color:var(--muted);
-    border-radius:999px; padding:8px 16px; font-size:.9rem; font-weight:600;
-    cursor:pointer; transition:.15s;
+    appearance:none; border:0; background:var(--chip); color:var(--ink-2);
+    font-family:var(--text); font-size:.9rem; font-weight:600; line-height:1;
+    padding:13px 18px; border-radius:999px; cursor:pointer;
+    transition:background .15s ease, color .15s ease, transform .12s ease;
   }
-  .tab:hover{color:var(--text)}
-  .tab[aria-selected="true"]{background:var(--accent); border-color:transparent; color:#fff}
-  .addr{color:var(--muted); font-size:.85rem; margin:0 0 14px}
-  .branch{margin:26px 0 12px}
-  .branch:first-of-type{margin-top:14px}
+  .tab:hover{background:var(--chip-hover); color:var(--ink)}
+  .tab:active{transform:translateY(1px)}
+  .tab:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .tab[aria-selected="true"]{background:var(--accent); color:#fff}
+
+  /* ── Заголовок филиала ────────────────────────────────────────────── */
+  .branch{display:flex; align-items:baseline; gap:14px; margin:40px 0 16px; flex-wrap:wrap}
+  .branch:first-child{margin-top:4px}
   .branch h2{
-    margin:0; font-size:1.15rem; font-weight:800; letter-spacing:-.01em;
-    display:flex; align-items:center; gap:10px;
+    margin:0; font-family:var(--display); font-weight:600;
+    font-size:1.5rem; line-height:1.1; letter-spacing:.02em; text-transform:uppercase;
+    position:relative; padding-left:16px;
   }
-  .branch h2::before{content:""; width:4px; height:20px; border-radius:2px; background:var(--accent)}
-  .branch p{margin:4px 0 0 14px; color:var(--muted); font-size:.85rem}
-  .grid{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
-  .day{border:1px solid var(--line); border-radius:14px; background:var(--card); overflow:hidden}
+  .branch h2::before{
+    content:""; position:absolute; left:0; top:.1em; bottom:.1em;
+    width:4px; border-radius:2px; background:var(--accent);
+  }
+  .branch p{margin:0; color:var(--muted); font-size:.875rem}
+  #addr{margin:0 0 18px; color:var(--muted); font-size:.875rem}
+
+  /* ── Сетка дней ───────────────────────────────────────────────────── */
+  .grid{display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+  .day{
+    background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow);
+    overflow:hidden; animation:rise .3s ease both;
+  }
+  @keyframes rise{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion:reduce){ .day{animation:none} }
   .day h3{
-    margin:0; padding:10px 14px; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase;
-    color:var(--muted); border-bottom:1px solid var(--line); font-weight:700;
+    margin:0; padding:16px 18px 10px;
+    font-size:.6875rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); display:flex; align-items:center; gap:8px;
   }
-  .day.today h3{color:#fff; background:var(--accent); border-color:transparent}
-  ul{list-style:none; margin:0; padding:6px}
-  li{display:flex; gap:10px; align-items:flex-start; padding:8px 8px; border-radius:10px}
-  li + li{border-top:1px solid var(--line)}
-  .time{font-variant-numeric:tabular-nums; font-weight:700; font-size:.95rem; white-space:nowrap}
+  .day.today{box-shadow:var(--shadow), inset 0 3px 0 var(--accent)}
+  .day.today h3{color:var(--accent); padding-top:19px}
+  .today-tag{
+    margin-left:auto; font-size:.625rem; letter-spacing:.08em;
+    background:var(--accent-soft); color:var(--accent); padding:4px 9px; border-radius:999px;
+  }
+
+  ul{list-style:none; margin:0; padding:0 10px 10px}
+  li{display:flex; gap:14px; align-items:baseline; padding:11px 8px}
+  li + li{box-shadow:inset 0 1px 0 var(--hair)}
+  .time{
+    font-variant-numeric:tabular-nums; font-weight:700; font-size:.9375rem;
+    color:var(--ink); letter-spacing:-.01em; white-space:nowrap; min-width:3.1em;
+  }
   .info{min-width:0}
-  .title{font-weight:600; font-size:.95rem; line-height:1.25}
-  .meta{color:var(--muted); font-size:.82rem; margin-top:2px}
-  .empty{color:var(--muted); font-size:.85rem; padding:10px 14px}
-  .note{margin-top:16px; color:var(--muted); font-size:.8rem}
-  .err{padding:16px; border:1px solid var(--line); border-radius:14px; color:var(--muted)}
-  @media (max-width:640px){ .wrap{padding:4px 12px 20px} }
+  .title{font-size:.9375rem; font-weight:600; line-height:1.3; color:var(--ink)}
+  .meta{margin-top:3px; color:var(--muted); font-size:.8125rem; line-height:1.35}
+
+  /* ── Пустое состояние и ошибка ────────────────────────────────────── */
+  .note{
+    background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow);
+    padding:30px 24px; text-align:center;
+  }
+  .note b{
+    display:block; font-family:var(--display); font-size:1.125rem; font-weight:600;
+    letter-spacing:.03em; text-transform:uppercase; margin-bottom:6px;
+  }
+  .note span{color:var(--muted); font-size:.9rem}
+
+  @media (max-width:640px){
+    .wrap{padding:8px 14px 22px}
+    .branch{margin:32px 0 14px}
+    .branch h2{font-size:1.3rem}
+    .grid{gap:12px}
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div id="tabs" class="tabs" role="tablist" hidden></div>
-  <p id="addr" class="addr" hidden></p>
+  <p id="addr" hidden></p>
   <div id="out"></div>
 </div>
 
@@ -121,7 +186,9 @@
     for (var d = 0; d < 7; d++) {
       var items = list.filter(function (s) { return s.day_of_week === d; });
       if (items.length === 0) continue;
-      html += '<div class="day' + (d === todayIdx ? " today" : "") + '"><h3>' + DAYS[d] + "</h3><ul>";
+      var today = d === todayIdx;
+      html += '<div class="day' + (today ? " today" : "") + '"><h3>' + DAYS[d] +
+        (today ? '<span class="today-tag">сегодня</span>' : "") + "</h3><ul>";
       items.forEach(function (s) {
         var meta = [];
         if (showTrainer && s.trainer_name) meta.push(esc(s.trainer_name));
@@ -136,12 +203,13 @@
     return html + "</div>";
   }
 
-  var EMPTY = '<div class="err">Расписание скоро появится. Позвоните нам — подскажем ближайшую группу.</div>';
+  var EMPTY = '<div class="note"><b>Расписание скоро появится</b>' +
+    "<span>Позвоните нам — подскажем ближайшую группу.</span></div>";
 
   function render() {
     // выбран конкретный филиал — показываем только его неделю
     if (current) {
-      var list = data.sessions.filter(function (s) { return !current || s.branch_id === current; });
+      var list = data.sessions.filter(function (s) { return s.branch_id === current; });
       out.innerHTML = list.length ? weekHtml(list) : EMPTY;
       var b = data.branches.find(function (x) { return x.id === current; });
       addrEl.textContent = b && b.address ? b.address : "";
@@ -193,7 +261,8 @@
     .then(function (r) { if (!r.ok) throw new Error("нет доступа"); return r.json(); })
     .then(function (d) { data = d; renderTabs(); render(); })
     .catch(function () {
-      out.innerHTML = '<div class="err">Расписание временно недоступно. Пожалуйста, позвоните нам.</div>';
+      out.innerHTML = '<div class="note"><b>Расписание временно недоступно</b>' +
+        "<span>Пожалуйста, позвоните нам — подскажем расписание.</span></div>";
       sendHeight();
     });
 })();

@@ -29,16 +29,18 @@ r.get("/", can("clients_view"), async (req, res, next) => {
         COALESCE((SELECT sum(price - paid) FROM client_subscriptions s WHERE s.client_id=c.id AND price>paid AND s.status='active'),0) AS debt,
         COALESCE((SELECT json_agg(jsonb_build_object('id',d.id,'name',d.name,'color',d.color))
                   FROM client_disciplines cd JOIN disciplines d ON d.id=cd.discipline_id WHERE cd.client_id=c.id),'[]') AS disciplines,
-        COALESCE((SELECT json_agg(jsonb_build_object('id',t.id,'name',t.name))
-                  FROM client_trainers ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=c.id),'[]') AS trainers
+        COALESCE((SELECT json_agg(jsonb_build_object('id',t.id,'name',t.name,
+                    'auto', NOT EXISTS (SELECT 1 FROM client_trainers m WHERE m.client_id=c.id AND m.trainer_id=t.id)))
+                  FROM client_trainers_all ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=c.id),'[]') AS trainers,
+        COALESCE((SELECT json_agg(ct.trainer_id) FROM client_trainers ct WHERE ct.client_id=c.id),'[]') AS manual_trainer_ids
       FROM clients c
       LEFT JOIN branches b ON b.id=c.branch_id
       LEFT JOIN admins m ON m.id=c.manager_id
       WHERE (lower(c.name) LIKE $1 OR coalesce(c.phone,'') LIKE $1
              OR coalesce(c.parent_phone,'') LIKE $1 OR lower(coalesce(c.parent_name,'')) LIKE $1)
         AND ($2::uuid IS NULL OR c.branch_id = $2)
-        AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$3))
-        AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$4))
+        AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers_all x WHERE x.client_id=c.id AND x.trainer_id=$3))
+        AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers_all x WHERE x.client_id=c.id AND x.trainer_id=$4))
         AND ($5::uuid IS NULL OR c.manager_id = $5)
         AND ($6::text IS NULL OR c.status = $6)
       ORDER BY c.name`, [search, branchId, trainerId, own, managerId, status]);
@@ -55,7 +57,7 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
        WHERE c.id=$1`, [req.params.id]);
     if (!c) return res.status(404).json({ error: "Клиент не найден" });
     if (own) {
-      const { rows: [{ cnt }] } = await q("SELECT count(*)::int AS cnt FROM client_trainers WHERE client_id=$1 AND trainer_id=$2", [c.id, own]);
+      const { rows: [{ cnt }] } = await q("SELECT count(*)::int AS cnt FROM client_trainers_all WHERE client_id=$1 AND trainer_id=$2", [c.id, own]);
       if (cnt === 0) return res.status(403).json({ error: "Это не ваш клиент" });
     }
     const subs = (await q(
@@ -64,7 +66,13 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
        WHERE s.client_id=$1 ORDER BY s.purchase_date DESC`, [c.id])).rows;
     const payments = (await q("SELECT * FROM payments WHERE client_id=$1 ORDER BY created_at DESC LIMIT 100", [c.id])).rows;
     const disciplines = (await q("SELECT d.* FROM client_disciplines cd JOIN disciplines d ON d.id=cd.discipline_id WHERE cd.client_id=$1", [c.id])).rows;
-    const trainers = (await q("SELECT t.* FROM client_trainers ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=$1", [c.id])).rows;
+    // тренеры: из групп расписания (auto) плюс отмеченные вручную
+    const trainers = (await q(
+      `SELECT t.*, NOT EXISTS (SELECT 1 FROM client_trainers m WHERE m.client_id=$1 AND m.trainer_id=t.id) AS auto
+       FROM client_trainers_all ct JOIN trainers t ON t.id=ct.trainer_id
+       WHERE ct.client_id=$1 ORDER BY t.name`, [c.id])).rows;
+    const manualTrainerIds = (await q("SELECT trainer_id FROM client_trainers WHERE client_id=$1", [c.id]))
+      .rows.map((x) => x.trainer_id);
     const loyalty = (await q("SELECT points, reason, created_at FROM loyalty_transactions WHERE client_id=$1 ORDER BY created_at DESC LIMIT 20", [c.id])).rows;
     const referredByName = c.referred_by ? (await q("SELECT name FROM clients WHERE id=$1", [c.referred_by])).rows[0]?.name : null;
     // Группы, за которыми закреплён клиент
@@ -90,7 +98,8 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
        FROM personal_bookings p LEFT JOIN trainers t ON t.id=p.trainer_id
        WHERE p.client_id=$1
        ORDER BY date DESC, start_time DESC LIMIT 60`, [c.id])).rows;
-    res.json({ ...c, subs, payments, disciplines, trainers, loyalty, referredByName, groups, visits });
+    res.json({ ...c, subs, payments, disciplines, trainers, manual_trainer_ids: manualTrainerIds,
+               loyalty, referredByName, groups, visits });
   } catch (e) { next(e); }
 });
 
@@ -159,7 +168,7 @@ r.post("/bulk", can("clients_edit"), async (req, res, next) => {
     const { rows } = await q(
       `SELECT c.id FROM clients c
         WHERE c.id = ANY($1::uuid[])
-          AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$2))`,
+          AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers_all x WHERE x.client_id=c.id AND x.trainer_id=$2))`,
       [ids, own]);
     const allowed = rows.map((x) => x.id);
     if (allowed.length === 0) return res.status(403).json({ error: "Нет доступа к выбранным клиентам" });

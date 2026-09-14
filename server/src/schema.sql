@@ -351,3 +351,14 @@ CREATE INDEX IF NOT EXISTS idx_clients_status  ON clients(status);
 
 -- Валюта больше не настраивается: все суммы в системе — рубли
 DELETE FROM settings WHERE key = 'currency';
+
+-- ── Этап 9: тренер клиента определяется группой расписания ─────────────────
+-- Отдельно привязывать клиента к тренеру больше не нужно: если клиент
+-- записан в группу, тренер этой группы считается его тренером.
+-- Ручная привязка (client_trainers) остаётся как дополнение.
+CREATE OR REPLACE VIEW client_trainers_all AS
+  SELECT client_id, trainer_id FROM client_trainers
+  UNION
+  SELECT cs.client_id, s.trainer_id
+    FROM client_sessions cs JOIN sessions s ON s.id = cs.session_id
+   WHERE s.trainer_id IS NOT NULL;

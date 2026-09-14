@@ -209,7 +209,8 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
     birthdate: client.birthdate?.slice(0, 10) || "",
     branch_id: client.branch_id || "",
     discipline_ids: (client.disciplines || []).map((d) => d.id),
-    trainer_ids: (client.trainers || []).map((t) => t.id),
+    // вручную отмечаются только дополнительные тренеры: основной приходит из группы
+    trainer_ids: client.manual_trainer_ids || (client.trainers || []).filter((t) => !t.auto).map((t) => t.id),
     discount_percent: client.discount_percent || 0,
     gender: client.gender || "",
     parent_name: client.parent_name || "",
@@ -312,7 +313,7 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
           </div>
         </Field>
 
-        <Field label="Тренеры">
+        <Field label="Тренеры дополнительно">
           <div className="flex flex-wrap gap-2">
             {trainers.map((t) => (
               <button key={t.id} type="button" onClick={() => toggle("trainer_ids", t.id)}
@@ -320,6 +321,10 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
             ))}
             {trainers.length === 0 && <span className="text-xs text-slate-400">Сначала добавьте тренеров в Настройках</span>}
           </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Тренер группы из расписания считается тренером клиента автоматически — отмечать его здесь не нужно.
+            Отмечайте только тех, кто ведёт ученика дополнительно (например, персональные тренировки).
+          </p>
         </Field>
 
         <div className="grid grid-cols-2 gap-3">

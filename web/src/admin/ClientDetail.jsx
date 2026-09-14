@@ -106,9 +106,10 @@ export default function ClientDetail() {
       )}
 
       {/* Сводка */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Info label="Филиал" value={c.branch_name || "—"} />
         <Info label="Направления" value={(c.disciplines || []).map((d) => d.name).join(", ") || "—"} />
+        <Info label="Тренеры" value={(c.trainers || []).map((t) => t.name + (t.auto ? " (по группе)" : "")).join(", ") || "—"} />
         <Info label="Скидка" value={Number(c.discount_percent) > 0 ? `${Number(c.discount_percent)}%` : "—"} />
         <Info label="Баллы" value={c.bonus_points || 0} />
       </div>

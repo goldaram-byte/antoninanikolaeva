@@ -20,7 +20,7 @@ r.get("/", can("finance_view"), async (req, res, next) => {
        JOIN clients c ON c.id=p.client_id
        LEFT JOIN client_subscriptions s ON s.id=p.client_sub_id
        LEFT JOIN branches b ON b.id=p.branch_id
-       WHERE ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=p.client_id AND x.trainer_id=$1))
+       WHERE ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers_all x WHERE x.client_id=p.client_id AND x.trainer_id=$1))
          AND ($2::date IS NULL OR p.created_at::date >= $2)
          AND ($3::date IS NULL OR p.created_at::date <= $3)
          AND ($4::text IS NULL OR p.method = $4)
@@ -72,7 +72,7 @@ r.get("/debtors", can("finance_view"), async (req, res, next) => {
        JOIN clients c ON c.id=s.client_id
        LEFT JOIN branches b ON b.id=c.branch_id
        WHERE s.price > s.paid AND s.status='active'
-         AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$1))
+         AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers_all x WHERE x.client_id=c.id AND x.trainer_id=$1))
          AND ($2::uuid IS NULL OR c.branch_id = $2)
        GROUP BY c.id, c.name, c.phone, b.name
        ORDER BY debt DESC, c.name`, [own, branchId]);
@@ -97,7 +97,7 @@ r.get("/debtors", can("finance_view"), async (req, res, next) => {
            WHERE s.client_id=c.id AND s.status='active'
              AND s.expiry_date >= CURRENT_DATE
              AND (s.kind='unlimited' OR s.sessions_used < s.sessions_total))
-         AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers x WHERE x.client_id=c.id AND x.trainer_id=$1))
+         AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers_all x WHERE x.client_id=c.id AND x.trainer_id=$1))
          AND ($2::uuid IS NULL OR c.branch_id = $2)`, [own, branchId]);
 
     // Сводим: клиент может и иметь долг, и не оплатить месяц

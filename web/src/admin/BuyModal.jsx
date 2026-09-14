@@ -11,7 +11,9 @@ export const METHODS = ["наличные", "перевод", "расчётны�
 export default function BuyModal({ client, branches, trainers, onClose, onDone }) {
   const [types, setTypes] = useState([]);
   const [f, setF] = useState({
-    sub_type_id: "", branch_id: client.branch_id || "", trainer_id: "",
+    sub_type_id: "", branch_id: client.branch_id || "",
+    // тренер подставляется сам — от него считается зарплата
+    trainer_id: (client.trainers || [])[0]?.id || "",
     paidNow: true, method: "наличные", use_points: 0, custom: false, custom_price: "",
     start_date: new Date().toISOString().slice(0, 10), payer: "",
   });
