@@ -19,6 +19,7 @@ import tasksRoutes from "./routes/tasks.js";
 import salaryRoutes from "./routes/salary.js";
 import importRoutes from "./routes/import.js";
 import employeesRoutes from "./routes/employees.js";
+import publicRoutes from "./routes/public.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") || "*" }));
@@ -43,6 +44,7 @@ app.use("/api/tasks", tasksRoutes);
 app.use("/api/salary", salaryRoutes);
 app.use("/api/import", importRoutes);
 app.use("/api/employees", employeesRoutes);
+app.use("/api/public", publicRoutes);          // расписание для сайта школы
 
 // Прод-режим: один процесс отдаёт и API, и собранный фронтенд (SPA)
 if (process.env.CLIENT_DIST) {

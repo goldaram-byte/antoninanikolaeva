@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Расписание занятий</title>
+<!--
+  Виджет расписания для сайта школы (Tilda и любой другой конструктор).
+  Вставляется в блок «HTML-код» как <iframe src="https://ВАШ-ДОМЕН/raspisanie.html">.
+  Данные берутся из CRM: /api/public/schedule — обновили расписание в CRM,
+  на сайте оно обновилось само.
+
+  Параметры адреса:
+    ?branch=<id филиала>  — показать только один филиал (без переключателя)
+    ?accent=%23dc2626     — свой акцентный цвет (# записывается как %23)
+    ?theme=dark           — тёмная тема
+    ?trainer=0            — не показывать имена тренеров
+-->
+<style>
+  :root{
+    --accent:#dc2626; --bg:#ffffff; --card:#ffffff; --line:#e8e8ea;
+    --text:#111113; --muted:#6b7280; --chip:#f5f5f7;
+    font-size:16px;
+  }
+  [data-theme="dark"]{
+    --bg:#0d0d0f; --card:#17171a; --line:#2a2a30; --text:#f4f4f5; --muted:#9ca3af; --chip:#212127;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1100px; margin:0 auto; padding:4px 16px 24px}
+  .tabs{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 16px}
+  .tab{
+    border:1px solid var(--line); background:var(--card); color:var(--muted);
+    border-radius:999px; padding:8px 16px; font-size:.9rem; font-weight:600;
+    cursor:pointer; transition:.15s;
+  }
+  .tab:hover{color:var(--text)}
+  .tab[aria-selected="true"]{background:var(--accent); border-color:transparent; color:#fff}
+  .addr{color:var(--muted); font-size:.85rem; margin:0 0 14px}
+  .grid{display:grid; gap:12px; grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+  .day{border:1px solid var(--line); border-radius:14px; background:var(--card); overflow:hidden}
+  .day h3{
+    margin:0; padding:10px 14px; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); border-bottom:1px solid var(--line); font-weight:700;
+  }
+  .day.today h3{color:#fff; background:var(--accent); border-color:transparent}
+  ul{list-style:none; margin:0; padding:6px}
+  li{display:flex; gap:10px; align-items:flex-start; padding:8px 8px; border-radius:10px}
+  li + li{border-top:1px solid var(--line)}
+  .time{font-variant-numeric:tabular-nums; font-weight:700; font-size:.95rem; white-space:nowrap}
+  .info{min-width:0}
+  .title{font-weight:600; font-size:.95rem; line-height:1.25}
+  .meta{color:var(--muted); font-size:.82rem; margin-top:2px}
+  .empty{color:var(--muted); font-size:.85rem; padding:10px 14px}
+  .note{margin-top:16px; color:var(--muted); font-size:.8rem}
+  .err{padding:16px; border:1px solid var(--line); border-radius:14px; color:var(--muted)}
+  @media (max-width:640px){ .wrap{padding:4px 12px 20px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="tabs" class="tabs" role="tablist" hidden></div>
+  <p id="addr" class="addr" hidden></p>
+  <div id="out"></div>
+</div>
+
+<script>
+(function () {
+  var DAYS = ["Понедельник","Вторник","Среда","Четверг","Пятница","Суббота","Воскресенье"];
+  var p = new URLSearchParams(location.search);
+  var fixedBranch = p.get("branch") || "";
+  var showTrainer = p.get("trainer") !== "0";
+  if (p.get("accent")) document.documentElement.style.setProperty("--accent", p.get("accent"));
+  if (p.get("theme") === "dark") document.documentElement.setAttribute("data-theme", "dark");
+
+  var out = document.getElementById("out");
+  var tabsEl = document.getElementById("tabs");
+  var addrEl = document.getElementById("addr");
+  var data = null, current = fixedBranch;
+
+  // сообщаем высоту странице-родителю, чтобы iframe подстроился
+  function sendHeight() {
+    // именно высота содержимого: scrollHeight страницы не бывает меньше окна,
+    // иначе iframe на сайте остался бы с пустым местом внизу
+    var wrap = document.querySelector(".wrap");
+    var h = Math.ceil(wrap ? wrap.getBoundingClientRect().bottom + 8 : document.documentElement.scrollHeight);
+    try { parent.postMessage({ type: "karate-schedule-height", height: h }, "*"); } catch (e) {}
+  }
+  new ResizeObserver(sendHeight).observe(document.body);
+
+  var esc = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  };
+  var hhmm = function (t) { return String(t || "").slice(0, 5); };
+  // понедельник = 0, как в CRM
+  var todayIdx = (new Date().getDay() + 6) % 7;
+
+  function render() {
+    var list = data.sessions.filter(function (s) { return !current || s.branch_id === current; });
+    if (list.length === 0) {
+      out.innerHTML = '<div class="err">Расписание скоро появится. Позвоните нам — подскажем ближайшую группу.</div>';
+      return sendHeight();
+    }
+    var html = '<div class="grid">';
+    for (var d = 0; d < 7; d++) {
+      var items = list.filter(function (s) { return s.day_of_week === d; });
+      if (items.length === 0) continue;
+      html += '<div class="day' + (d === todayIdx ? " today" : "") + '"><h3>' + DAYS[d] + "</h3><ul>";
+      items.forEach(function (s) {
+        var meta = [];
+        if (showTrainer && s.trainer_name) meta.push(esc(s.trainer_name));
+        if (s.room) meta.push(esc(s.room));
+        if (!current && data.branches.length > 1) {
+          var b = data.branches.find(function (x) { return x.id === s.branch_id; });
+          if (b) meta.push(esc(b.name));
+        }
+        html += '<li><span class="time">' + hhmm(s.start_time) + "</span><div class=\"info\">" +
+          '<div class="title">' + esc(s.title) + "</div>" +
+          (meta.length ? '<div class="meta">' + meta.join(" · ") + "</div>" : "") +
+          "</div></li>";
+      });
+      html += "</ul></div>";
+    }
+    html += "</div>";
+    out.innerHTML = html;
+
+    var b = data.branches.find(function (x) { return x.id === current; });
+    addrEl.textContent = b && b.address ? b.address : "";
+    addrEl.hidden = !addrEl.textContent;
+    sendHeight();
+  }
+
+  function renderTabs() {
+    var used = data.branches.filter(function (b) {
+      return data.sessions.some(function (s) { return s.branch_id === b.id; });
+    });
+    if (fixedBranch || used.length < 2) return;
+    tabsEl.hidden = false;
+    tabsEl.innerHTML = "";
+    [{ id: "", name: "Все филиалы" }].concat(used).forEach(function (b) {
+      var el = document.createElement("button");
+      el.className = "tab"; el.type = "button"; el.textContent = b.name;
+      el.setAttribute("role", "tab");
+      el.setAttribute("aria-selected", String(b.id === current));
+      el.onclick = function () {
+        current = b.id;
+        [].forEach.call(tabsEl.children, function (c) { c.setAttribute("aria-selected", String(c === el)); });
+        render();
+      };
+      tabsEl.appendChild(el);
+    });
+  }
+
+  fetch("/api/public/schedule")
+    .then(function (r) { if (!r.ok) throw new Error("нет доступа"); return r.json(); })
+    .then(function (d) { data = d; renderTabs(); render(); })
+    .catch(function () {
+      out.innerHTML = '<div class="err">Расписание временно недоступно. Пожалуйста, позвоните нам.</div>';
+      sendHeight();
+    });
+})();
+</script>
+</body>
+</html>

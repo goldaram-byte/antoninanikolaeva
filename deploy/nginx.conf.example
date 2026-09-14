@@ -38,6 +38,12 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    # Виджет расписания для сайта школы (его вставляют в iframe на Tilda).
+    # Никаких запрещающих вставку заголовков здесь быть не должно.
+    location = /raspisanie.html {
+        add_header Cache-Control "public, max-age=300";
+    }
+
     # Стартовую страницу и сервис-воркер НЕ кэшируем, иначе после обновления
     # системы у сотрудников продолжит открываться старая версия
     location = /index.html { add_header Cache-Control "no-store, must-revalidate"; }

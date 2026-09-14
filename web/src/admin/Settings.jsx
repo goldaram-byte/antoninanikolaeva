@@ -14,6 +14,7 @@ export default function Settings() {
       {hasPerm("settings_manage") && <Branches />}
       {(hasPerm("employees_manage") || hasPerm("settings_manage")) && <Trainers />}
       {hasPerm("settings_manage") && <Disciplines />}
+      {hasPerm("settings_manage") && <SiteSchedule />}
       {hasPerm("settings_manage") && <Loyalty />}
     </div>
   );
@@ -186,6 +187,57 @@ function Disciplines() {
           </li>
         ))}
       </ul>
+    </Panel>
+  );
+}
+
+// ===== Расписание на сайте школы =====
+function SiteSchedule() {
+  const [all, setAll] = useState({});
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { api.get("/api/catalog/settings/all").then(setAll).catch(() => {}); }, []);
+  const on = (all.public_schedule ?? "1") === "1";
+  const toggle = async (value) => {
+    await api.put("/api/catalog/settings/public_schedule", { value: value ? "1" : "0" });
+    setAll((p) => ({ ...p, public_schedule: value ? "1" : "0" }));
+  };
+
+  const url = `${location.origin}/raspisanie.html`;
+  const code = `<iframe src="${url}" style="width:100%;border:0;min-height:600px" id="karateSchedule" loading="lazy"></iframe>
+<script>
+window.addEventListener("message", function (e) {
+  if (e.data && e.data.type === "karate-schedule-height")
+    document.getElementById("karateSchedule").style.height = e.data.height + "px";
+});
+<\/script>`;
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { /* в старых браузерах просто выделите текст вручную */ }
+  };
+
+  return (
+    <Panel title="Расписание на сайте школы">
+      <label className="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" className="h-4 w-4" checked={on} onChange={(e) => toggle(e.target.checked)} />
+        Показывать расписание на сайте (Tilda и любой другой конструктор)
+      </label>
+      <p className="mt-2 text-xs text-slate-500">
+        Страница расписания: <a className="text-brand hover:underline" href={url} target="_blank" rel="noreferrer">{url}</a>.
+        Данные берутся из раздела «Расписание» — поменяли занятие в CRM, на сайте оно обновилось само.
+      </p>
+
+      <div className="mt-3">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="text-sm font-medium text-slate-600">Код для блока «HTML» на Tilda (T123)</span>
+          <button className="text-xs text-brand hover:underline" onClick={copy}>{copied ? "скопировано" : "скопировать"}</button>
+        </div>
+        <textarea readOnly rows={6} className={inputCls + " font-mono text-xs"} value={code} onFocus={(e) => e.target.select()} />
+        <p className="mt-1 text-xs text-slate-400">
+          Можно добавить к адресу параметры: <code>?branch=ID</code> — один филиал,
+          <code> ?theme=dark</code> — тёмная тема, <code> ?trainer=0</code> — без имён тренеров.
+        </p>
+      </div>
     </Panel>
   );
 }
