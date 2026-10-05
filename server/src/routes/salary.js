@@ -6,6 +6,9 @@ const r = Router();
 r.use(employee, can("reports_salary"));
 
 // Расчёт зарплаты за месяц (month=YYYY-MM).
+// Оплата относится к месяцу, за который куплен абонемент (дата его начала),
+// а не к дате платежа: абонемент за сентябрь, оплаченный в октябре,
+// идёт в сентябрьскую зарплату.
 // База — оплаты (приход, реальные деньги) за месяц по абонементам, привязанным к тренеру.
 // Схема тренера: percent — только % от оплат; salary_percent — оклад + % от оплат.
 r.get("/", async (req, res, next) => {
@@ -19,7 +22,7 @@ r.get("/", async (req, res, next) => {
        JOIN client_subscriptions s ON s.id = p.client_sub_id
        WHERE p.status='succeeded' AND p.op_type='payment' AND p.counts_revenue
          AND s.trainer_id IS NOT NULL
-         AND p.created_at >= $1::date AND p.created_at < ($1::date + interval '1 month')
+         AND s.purchase_date >= $1::date AND s.purchase_date < ($1::date + interval '1 month')
        GROUP BY s.trainer_id`, [from]);
     const byTrainer = Object.fromEntries(sums.map((s) => [s.trainer_id, s]));
 
@@ -50,7 +53,7 @@ r.get("/:trainerId/details", async (req, res, next) => {
        JOIN clients c ON c.id = p.client_id
        WHERE p.status='succeeded' AND p.op_type='payment' AND p.counts_revenue
          AND s.trainer_id = $1
-         AND p.created_at >= $2::date AND p.created_at < ($2::date + interval '1 month')
+         AND s.purchase_date >= $2::date AND s.purchase_date < ($2::date + interval '1 month')
        ORDER BY p.created_at DESC`, [req.params.trainerId, from]);
     res.json(rows);
   } catch (e) { next(e); }

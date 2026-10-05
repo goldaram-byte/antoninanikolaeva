@@ -26,7 +26,7 @@ export default function Salary() {
 
   return (
     <div className="space-y-5">
-      <Header title="Зарплата" subtitle="Расчёт по тренерам за месяц"
+      <Header title="Зарплата" subtitle="Расчёт по тренерам за месяц · оплата относится к месяцу абонемента, а не к дате платежа"
         action={<input type="month" className={inputCls + " w-auto"} value={month} onChange={(e) => setMonth(e.target.value)} />} />
 
       {!data ? <Spinner /> : data.trainers.length === 0 ? <Empty text="Тренеров пока нет — добавьте их в Настройках." /> : (

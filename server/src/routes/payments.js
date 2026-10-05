@@ -7,6 +7,14 @@ r.use(employee);
 
 const ownTrainer = (req) => (req.user.scope === "own" ? req.user.trainerId : null);
 
+// Учётная дата операции. Абонемент за сентябрь, оплаченный в октябре,
+// в отчёте должен попасть в сентябрь — поэтому по умолчанию операции
+// относятся к дате начала абонемента (purchase_date), а не к дате платежа.
+// Оплаты без абонемента (и возвраты) считаются по дате самой операции.
+// ?by=paid — переключает отчёт на кассовый принцип (по дате платежа).
+const ACC_DATE = "COALESCE(s.purchase_date, p.created_at::date)";
+const accDate = (req) => (req.query.by === "paid" ? "p.created_at::date" : ACC_DATE);
+
 // Операции за период с фильтрами: даты, способ, филиал
 r.get("/", can("finance_view"), async (req, res, next) => {
   try {
@@ -14,18 +22,20 @@ r.get("/", can("finance_view"), async (req, res, next) => {
     const from = req.query.from || null, to = req.query.to || null;
     const method = req.query.method || null;
     const branchId = req.query.branch_id || null;
+    const d = accDate(req);
     const { rows } = await q(
-      `SELECT p.*, c.name AS client_name, s.name AS sub_name, b.name AS branch_name
+      `SELECT p.*, c.name AS client_name, s.name AS sub_name, b.name AS branch_name,
+              s.purchase_date AS period_date
        FROM payments p
        JOIN clients c ON c.id=p.client_id
        LEFT JOIN client_subscriptions s ON s.id=p.client_sub_id
        LEFT JOIN branches b ON b.id=p.branch_id
        WHERE ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM client_trainers_all x WHERE x.client_id=p.client_id AND x.trainer_id=$1))
-         AND ($2::date IS NULL OR p.created_at::date >= $2)
-         AND ($3::date IS NULL OR p.created_at::date <= $3)
+         AND ($2::date IS NULL OR ${d} >= $2)
+         AND ($3::date IS NULL OR ${d} <= $3)
          AND ($4::text IS NULL OR p.method = $4)
          AND ($5::uuid IS NULL OR p.branch_id = $5)
-       ORDER BY p.created_at DESC LIMIT 1000`, [own, from, to, method, branchId]);
+       ORDER BY ${d} DESC, p.created_at DESC LIMIT 1000`, [own, from, to, method, branchId]);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -35,22 +45,24 @@ r.get("/summary", can("finance_view"), async (req, res, next) => {
   try {
     const from = req.query.from || null, to = req.query.to || null;
     const branchId = req.query.branch_id || null;
+    const d = accDate(req);
     const { rows: [tot] } = await q(
       `SELECT
-         COALESCE(SUM(amount) FILTER (WHERE status='succeeded' AND op_type='payment' AND counts_revenue),0)::numeric AS income,
-         COALESCE(SUM(amount) FILTER (WHERE status='succeeded' AND op_type='refund'),0)::numeric AS refunds,
-         COUNT(*) FILTER (WHERE status='succeeded') AS ops
-       FROM payments
-       WHERE ($1::date IS NULL OR created_at::date >= $1)
-         AND ($2::date IS NULL OR created_at::date <= $2)
-         AND ($3::uuid IS NULL OR branch_id = $3)`, [from, to, branchId]);
+         COALESCE(SUM(p.amount) FILTER (WHERE p.status='succeeded' AND p.op_type='payment' AND p.counts_revenue),0)::numeric AS income,
+         COALESCE(SUM(p.amount) FILTER (WHERE p.status='succeeded' AND p.op_type='refund'),0)::numeric AS refunds,
+         COUNT(*) FILTER (WHERE p.status='succeeded') AS ops
+       FROM payments p LEFT JOIN client_subscriptions s ON s.id=p.client_sub_id
+       WHERE ($1::date IS NULL OR ${d} >= $1)
+         AND ($2::date IS NULL OR ${d} <= $2)
+         AND ($3::uuid IS NULL OR p.branch_id = $3)`, [from, to, branchId]);
     const byMethod = (await q(
-      `SELECT method, COALESCE(SUM(amount),0)::numeric AS sum FROM payments
-       WHERE status='succeeded' AND op_type='payment' AND counts_revenue
-         AND ($1::date IS NULL OR created_at::date >= $1)
-         AND ($2::date IS NULL OR created_at::date <= $2)
-         AND ($3::uuid IS NULL OR branch_id = $3)
-       GROUP BY method ORDER BY sum DESC`, [from, to, branchId])).rows;
+      `SELECT p.method, COALESCE(SUM(p.amount),0)::numeric AS sum
+       FROM payments p LEFT JOIN client_subscriptions s ON s.id=p.client_sub_id
+       WHERE p.status='succeeded' AND p.op_type='payment' AND p.counts_revenue
+         AND ($1::date IS NULL OR ${d} >= $1)
+         AND ($2::date IS NULL OR ${d} <= $2)
+         AND ($3::uuid IS NULL OR p.branch_id = $3)
+       GROUP BY p.method ORDER BY sum DESC`, [from, to, branchId])).rows;
     res.json({ income: Number(tot.income), refunds: Number(tot.refunds), net: Number(tot.income) - Number(tot.refunds), ops: Number(tot.ops), byMethod });
   } catch (e) { next(e); }
 });

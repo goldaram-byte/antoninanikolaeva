@@ -12,7 +12,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 export default function Finance() {
   const [tab, setTab] = useState("ops");           // ops | debtors
   const [branches, setBranches] = useState([]);
-  const [f, setF] = useState({ from: monthStart(), to: today(), method: "", branch_id: "" });
+  // by: period — по месяцу абонемента (абонемент за сентябрь, оплаченный в октябре,
+  // попадает в сентябрь); paid — по дате самого платежа (касса)
+  const [f, setF] = useState({ from: monthStart(), to: today(), method: "", branch_id: "", by: "period" });
   const [ops, setOps] = useState(null);
   const [sum, setSum] = useState(null);
   const [debtors, setDebtors] = useState(null);
@@ -25,6 +27,7 @@ export default function Finance() {
     if (f.to) p.set("to", f.to);
     if (f.method) p.set("method", f.method);
     if (f.branch_id) p.set("branch_id", f.branch_id);
+    p.set("by", f.by);
     const [o, s] = await Promise.all([
       api.get(`/api/payments?${p.toString()}`),
       api.get(`/api/payments/summary?${p.toString()}`),
@@ -75,7 +78,21 @@ export default function Finance() {
             <option value="бонусы">бонусы</option>
           </select>
         )}
+        {tab === "ops" && (
+          <select className={inputCls + " w-auto"} value={f.by} onChange={(e) => setF({ ...f, by: e.target.value })}
+            title="К какому периоду относить оплату">
+            <option value="period">По месяцу абонемента</option>
+            <option value="paid">По дате оплаты</option>
+          </select>
+        )}
       </div>
+      {tab === "ops" && (
+        <p className="-mt-2 text-xs text-slate-400">
+          {f.by === "period"
+            ? "Оплата относится к месяцу, за который куплен абонемент (по дате его начала). Абонемент за сентябрь, оплаченный в октябре, показан в сентябре."
+            : "Оплата относится к дню, когда деньги поступили (кассовый отчёт)."}
+        </p>
+      )}
 
       {tab === "ops" && <>
         {sum && (
@@ -97,12 +114,18 @@ export default function Finance() {
             {ops.length === 0 ? <Empty text="Операций за период нет." />
               : <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <tr><th className="px-4 py-2.5">Дата</th><th className="px-4 py-2.5">Клиент</th><th className="px-4 py-2.5">Что</th><th className="px-4 py-2.5">Филиал</th><th className="px-4 py-2.5">Способ</th><th className="px-4 py-2.5 text-right">Сумма</th><th></th></tr>
+                  <tr><th className="px-4 py-2.5">{f.by === "period" ? "За период с" : "Дата"}</th><th className="px-4 py-2.5">Клиент</th><th className="px-4 py-2.5">Что</th><th className="px-4 py-2.5">Филиал</th><th className="px-4 py-2.5">Способ</th><th className="px-4 py-2.5 text-right">Сумма</th><th></th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {ops.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 text-slate-500">{fmtDate(p.created_at)}</td>
+                      <td className="px-4 py-2.5 text-slate-500">
+                        {f.by === "period" && p.period_date ? <>
+                          {fmtDate(p.period_date)}
+                          {String(p.period_date).slice(0, 10) !== String(p.created_at).slice(0, 10) &&
+                            <span className="block text-xs text-slate-400">оплачено {fmtDate(p.created_at)}</span>}
+                        </> : fmtDate(p.created_at)}
+                      </td>
                       <td className="px-4 py-2.5"><Link to={`/admin/clients/${p.client_id}`} className="font-medium text-slate-800 hover:text-brand">{p.client_name}</Link>
                         {p.payer && <span className="block text-xs text-slate-400">оплатил(а): {p.payer}</span>}</td>
                       <td className="px-4 py-2.5 text-slate-500">{p.sub_name || p.note || "—"}</td>

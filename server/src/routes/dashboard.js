@@ -5,7 +5,9 @@ import { employee } from "../auth.js";
 const r = Router();
 r.use(employee);
 
-// Сводка для дашборда. Клиенты считаются только действующие (status='active'). Денежные показатели (выручка, долги, последние оплаты)
+// Сводка для дашборда. Клиенты считаются только действующие (status='active').
+// «Выручка за месяц» — по месяцу, за который куплен абонемент (дата начала),
+// а не по дате платежа; оплаты без абонемента — по дате операции. Денежные показатели (выручка, долги, последние оплаты)
 // отдаются только сотрудникам с правом «Видеть оплаты и долги».
 r.get("/", async (req, res, next) => {
   try {
@@ -26,8 +28,10 @@ r.get("/", async (req, res, next) => {
          (SELECT count(DISTINCT s.client_id)::int FROM client_subscriptions s JOIN clients c ON c.id=s.client_id
            WHERE s.price > s.paid AND s.status='active' AND ($1::uuid IS NULL OR c.branch_id=$1)) AS debtors,
          (SELECT COALESCE(sum(p.amount),0)::numeric FROM payments p
+           LEFT JOIN client_subscriptions s ON s.id=p.client_sub_id
            WHERE p.status='succeeded' AND p.op_type='payment' AND p.counts_revenue
-             AND p.created_at >= date_trunc('month', CURRENT_DATE)
+             AND COALESCE(s.purchase_date, p.created_at::date) >= date_trunc('month', CURRENT_DATE)
+             AND COALESCE(s.purchase_date, p.created_at::date) <  date_trunc('month', CURRENT_DATE) + interval '1 month'
              AND ($1::uuid IS NULL OR p.branch_id=$1)) AS month_income`, [branchId]);
 
     // Разбивка по филиалам (для сводной таблицы «по всем филиалам»)
@@ -40,8 +44,10 @@ r.get("/", async (req, res, next) => {
          (SELECT COALESCE(sum(s.price - s.paid),0)::numeric FROM client_subscriptions s JOIN clients c ON c.id=s.client_id
            WHERE c.branch_id=b.id AND s.price > s.paid AND s.status='active') AS debt,
          (SELECT COALESCE(sum(p.amount),0)::numeric FROM payments p
+           LEFT JOIN client_subscriptions s ON s.id=p.client_sub_id
            WHERE p.branch_id=b.id AND p.status='succeeded' AND p.op_type='payment' AND p.counts_revenue
-             AND p.created_at >= date_trunc('month', CURRENT_DATE)) AS month_income
+             AND COALESCE(s.purchase_date, p.created_at::date) >= date_trunc('month', CURRENT_DATE)
+             AND COALESCE(s.purchase_date, p.created_at::date) <  date_trunc('month', CURRENT_DATE) + interval '1 month') AS month_income
        FROM branches b ORDER BY b.sort, b.name`)).rows;
 
     // Последние оплаты — только для тех, кому можно видеть финансы
