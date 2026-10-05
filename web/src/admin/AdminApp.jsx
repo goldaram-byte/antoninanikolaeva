@@ -69,7 +69,7 @@ export default function AdminApp() {
         <div className="sticky top-0 z-30 flex items-center gap-3 bg-brand-black px-4 py-3 text-white lg:hidden"
           style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}>
           <button onClick={() => setMenuOpen(true)} className="rounded-lg p-1 hover:bg-white/10"><Menu size={22} /></button>
-          <img src="/icon-192.png" alt="" className="h-8 w-8 rounded-lg" />
+          <img src="/icon-192.png" alt="Логотип школы" className="h-9 w-9 shrink-0" />
           <span className="text-sm font-bold uppercase tracking-wider">Школа каратэ</span>
           <button onClick={logout} title="Выйти" className="ml-auto flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-slate-300 hover:bg-white/10 hover:text-white">
             <LogOut size={16} /> Выйти
@@ -82,7 +82,7 @@ export default function AdminApp() {
           <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-brand-black text-slate-300 transition-transform lg:static lg:z-auto lg:w-56 lg:translate-x-0 ${menuOpen ? "translate-x-0" : "-translate-x-full"}`}
             style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
             <div className="flex items-center gap-2.5 px-5 py-5">
-              <img src="/icon-192.png" alt="" className="h-9 w-9 rounded-lg" />
+              <img src="/icon-192.png" alt="Логотип школы" className="h-12 w-12 shrink-0" />
               <div>
                 <div className="text-xs font-bold uppercase tracking-wider text-white">Школа каратэ</div>
                 <div className="text-[10px] text-slate-400">Николаевой Антонины</div>

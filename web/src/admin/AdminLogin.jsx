@@ -23,7 +23,7 @@ export default function AdminLogin() {
     <div className="flex min-h-screen items-center justify-center bg-brand-black p-4">
       <div className="w-full max-w-sm rounded-2xl bg-white p-7 shadow-xl">
         <div className="mb-6 flex items-center gap-3">
-          <img src="/icon-192.png" alt="" className="h-11 w-11 rounded-xl" />
+          <img src="/icon-192.png" alt="Логотип школы" className="h-16 w-16 shrink-0" />
           <div>
             <div className="text-sm font-bold uppercase tracking-wider text-slate-900">Школа каратэ</div>
             <div className="text-xs text-slate-400">Николаевой Антонины · панель управления</div>

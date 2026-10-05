@@ -1,4 +1,5 @@
 import { Router } from "express";
+import ExcelJS from "exceljs";
 import { q, tx } from "../db.js";
 import { employee, can } from "../auth.js";
 
@@ -15,8 +16,8 @@ async function setLinks(c, clientId, disciplineIds = []) {
   for (const id of disciplineIds) if (id) await c.query("INSERT INTO client_disciplines(client_id,discipline_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [clientId, id]);
 }
 
-r.get("/", can("clients_view"), async (req, res, next) => {
-  try {
+// Выборка клиентов по фильтрам списка (используется и списком, и экспортом)
+async function listClients(req) {
     const search = `%${(req.query.search || "").toLowerCase()}%`;
     const branchId = req.query.branch_id || null;
     const trainerId = req.query.trainer_id || null;
@@ -42,7 +43,72 @@ r.get("/", can("clients_view"), async (req, res, next) => {
         AND ($5::uuid IS NULL OR c.manager_id = $5)
         AND ($6::text IS NULL OR c.status = $6)
       ORDER BY c.name`, [search, branchId, trainerId, own, managerId, status]);
-    res.json(rows);
+    return rows;
+}
+
+r.get("/", can("clients_view"), async (req, res, next) => {
+  try { res.json(await listClients(req)); } catch (e) { next(e); }
+});
+
+// Экспорт базы клиентов в Excel — по тем же фильтрам, что и список.
+// Сумма долга попадает в файл только тем, кому можно видеть финансы.
+r.get("/export.xlsx", can("clients_view"), async (req, res, next) => {
+  try {
+    const rows = await listClients(req);
+    const perms = req.user?.perms || {};
+    const canFinance = !!(perms.__all || perms.finance_view);
+    const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow" }) : "");
+    const GENDER = { m: "муж", f: "жен" };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "CRM «Школа каратэ»";
+    const ws = wb.addWorksheet("Клиенты", { views: [{ state: "frozen", ySplit: 1 }] });
+    const cols = [
+      { header: "Имя", key: "name", width: 28 },
+      { header: "Телефон", key: "phone", width: 16 },
+      { header: "Статус", key: "status", width: 12 },
+      { header: "Филиал", key: "branch", width: 18 },
+      { header: "Тренеры", key: "trainers", width: 22 },
+      { header: "Направления", key: "disciplines", width: 18 },
+      { header: "Ответственный", key: "manager", width: 18 },
+      { header: "Дата рождения", key: "birthdate", width: 14 },
+      { header: "Пол", key: "gender", width: 6 },
+      { header: "Родитель", key: "parent_name", width: 20 },
+      { header: "Телефон родителя", key: "parent_phone", width: 18 },
+      { header: "Email", key: "email", width: 22 },
+      { header: "Источник", key: "source", width: 16 },
+      { header: "Скидка, %", key: "discount", width: 10 },
+      { header: "Баллы", key: "points", width: 8 },
+      ...(canFinance ? [{ header: "Долг, ₽", key: "debt", width: 10 }] : []),
+      { header: "Реферальный код", key: "ref", width: 16 },
+      { header: "В базе с", key: "created", width: 12 },
+      { header: "ID прежней CRM", key: "external_id", width: 14 },
+      { header: "Заметки", key: "notes", width: 40 },
+    ];
+    ws.columns = cols;
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F1F3" } };
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
+
+    for (const c of rows) {
+      ws.addRow({
+        name: c.name, phone: c.phone || "", status: c.status === "inactive" ? "неактивный" : "активный",
+        branch: c.branch_name || "", trainers: (c.trainers || []).map((t) => t.name).join(", "),
+        disciplines: (c.disciplines || []).map((d) => d.name).join(", "),
+        manager: c.manager_name || "", birthdate: fmtDate(c.birthdate), gender: GENDER[c.gender] || "",
+        parent_name: c.parent_name || "", parent_phone: c.parent_phone || "", email: c.email || "",
+        source: c.source || "", discount: Number(c.discount_percent) || 0, points: c.bonus_points || 0,
+        ...(canFinance ? { debt: Number(c.debt) || 0 } : {}),
+        ref: c.referral_code || "", created: fmtDate(c.created_at), external_id: c.external_id || "",
+        notes: c.notes || "",
+      });
+    }
+
+    const stamp = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" });
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="clients_${stamp}.xlsx"; filename*=UTF-8''${encodeURIComponent("Клиенты_" + stamp + ".xlsx")}`);
+    await wb.xlsx.write(res);
+    res.end();
   } catch (e) { next(e); }
 });
 

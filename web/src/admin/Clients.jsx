@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Pencil, Upload } from "lucide-react";
-import { api, hasPerm } from "../api.js";
+import { Plus, Search, Pencil, Upload, Download } from "lucide-react";
+import { api, hasPerm, getToken } from "../api.js";
 import { Header, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost, money } from "../ui.jsx";
 import ImportModal from "./ImportModal.jsx";
 import { WEEKDAYS } from "./Schedule.jsx";
 
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:4000" : "");
+
 export default function Clients() {
+  const [exporting, setExporting] = useState(false);
   const [list, setList] = useState(null);
   const [branches, setBranches] = useState([]);
   const [trainers, setTrainers] = useState([]);
@@ -24,6 +27,34 @@ export default function Clients() {
   const [bulk, setBulk] = useState({ disc: "", session: "" });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
+
+  // Параметры текущих фильтров — общие для списка и экспорта
+  const filterParams = () => {
+    const params = new URLSearchParams();
+    if (q) params.set("search", q);
+    if (fBranch) params.set("branch_id", fBranch);
+    if (fTrainer) params.set("trainer_id", fTrainer);
+    if (fManager) params.set("manager_id", fManager);
+    if (fStatus) params.set("status", fStatus);
+    return params;
+  };
+
+  // Скачать Excel: запрос идёт с токеном, поэтому через fetch, а не по ссылке
+  const exportXlsx = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch(`${BASE}/api/clients/export.xlsx?${filterParams().toString()}`,
+        { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) throw new Error("Не удалось выгрузить файл");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `Клиенты_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) { alert(e.message); }
+    finally { setExporting(false); }
+  };
 
   const load = async () => {
     const params = new URLSearchParams();
@@ -76,12 +107,16 @@ export default function Clients() {
   return (
     <div className="space-y-5">
       <Header title="Клиенты" subtitle={list ? `${list.length} в выборке` : ""}
-        action={hasPerm("clients_edit") ? (
+        action={
           <div className="flex gap-2">
-            <button className={btnGhost} onClick={() => setImportOpen(true)}><Upload size={15} /> Импорт</button>
-            <button className={btnPrimary} onClick={() => setEdit({})}><Plus size={16} /> Новый клиент</button>
+            <button className={btnGhost} onClick={exportXlsx} disabled={exporting || !list?.length}
+              title="Выгрузить текущую выборку в Excel">
+              <Download size={15} /> {exporting ? "Готовим…" : "Экспорт"}
+            </button>
+            {hasPerm("clients_edit") && <button className={btnGhost} onClick={() => setImportOpen(true)}><Upload size={15} /> Импорт</button>}
+            {hasPerm("clients_edit") && <button className={btnPrimary} onClick={() => setEdit({})}><Plus size={16} /> Новый клиент</button>}
           </div>
-        ) : null} />
+        } />
 
       <div className="flex flex-wrap gap-3">
         <div className="relative min-w-[220px] flex-1">
