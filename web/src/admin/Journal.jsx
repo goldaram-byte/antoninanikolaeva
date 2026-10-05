@@ -4,7 +4,8 @@ import { Check, X, UserPlus, Trash2 } from "lucide-react";
 import { api, hasPerm } from "../api.js";
 import { Header, Empty, Spinner, Modal, inputCls, btnPrimary, btnGhost } from "../ui.jsx";
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Сегодняшняя дата по Москве — так же, как считает сервер (UTC тут обманывает ночью)
+const today = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" });
 
 // Посещаемость: занятия дня, состав = закреплённые в группе + записавшиеся на дату.
 // «Был» списывает занятие с абонемента, снятие отметки возвращает. Отмечают тренер и администратор.
@@ -15,6 +16,14 @@ export default function Journal() {
   const [sessions, setSessions] = useState(null);
   const [open, setOpen] = useState({});          // раскрытые занятия
   const [addTo, setAddTo] = useState(null);      // занятие, куда добавляем клиента
+  const [err, setErr] = useState("");            // ответ сервера, если отметить не удалось
+
+  // любое действие в журнале: ошибку сервера показываем человеку, а не в консоль
+  const run = async (fn) => {
+    setErr("");
+    try { await fn(); await load(); }
+    catch (e) { setErr(e.message || "Не удалось сохранить"); }
+  };
 
   const load = useCallback(async () => {
     const p = new URLSearchParams({ date });
@@ -25,10 +34,8 @@ export default function Journal() {
   useEffect(() => { load().catch(() => setSessions([])); }, [load]);
 
   const canMark = hasPerm("attendance_mark");
-  const mark = async (s, clientId, status) => {
-    await api.post("/api/attendance/mark", { session_id: s.id, date, client_id: clientId, status });
-    load();
-  };
+  const mark = (s, clientId, status) =>
+    run(() => api.post("/api/attendance/mark", { session_id: s.id, date, client_id: clientId, status }));
 
   return (
     <div className="space-y-5">
@@ -44,6 +51,13 @@ export default function Journal() {
           {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </div>
+
+      {err && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span className="flex-1">{err}</span>
+          <button className="text-xs text-red-500 hover:underline" onClick={() => setErr("")}>скрыть</button>
+        </div>
+      )}
 
       {!sessions ? <Spinner /> : sessions.length === 0 ? <Empty text="В этот день занятий нет." /> : (
         <div className="space-y-3">
@@ -81,7 +95,7 @@ export default function Journal() {
                               <button title="Не пришёл" onClick={() => mark(s, r.id, r.status === "noshow" ? "booked" : "noshow")}
                                 className={`rounded-lg p-1.5 ${r.status === "noshow" ? "bg-red-500 text-white" : "bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"}`}><X size={15} /></button>
                               {!r.fixed && r.booking_id && (
-                                <button title="Убрать запись" onClick={async () => { await api.del(`/api/attendance/bookings/${r.booking_id}`); load(); }}
+                                <button title="Убрать запись" onClick={() => run(() => api.del(`/api/attendance/bookings/${r.booking_id}`))}
                                   className="rounded-lg bg-slate-100 p-1.5 text-slate-400 hover:text-red-500"><Trash2 size={15} /></button>
                               )}
                             </div>
@@ -102,9 +116,9 @@ export default function Journal() {
         </div>
       )}
 
-      {addTo && <AddClientModal onClose={() => setAddTo(null)} onPick={async (clientId) => {
-        await api.post("/api/attendance/book", { session_id: addTo.id, date, client_id: clientId });
-        setAddTo(null); load();
+      {addTo && <AddClientModal onClose={() => setAddTo(null)} onPick={(clientId) => {
+        const s = addTo; setAddTo(null);
+        run(() => api.post("/api/attendance/book", { session_id: s.id, date, client_id: clientId }));
       }} />}
     </div>
   );

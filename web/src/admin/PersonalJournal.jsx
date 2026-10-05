@@ -5,7 +5,8 @@ import { api, hasPerm } from "../api.js";
 import { Header, Panel, Empty, Spinner, Modal, Field, inputCls, btnPrimary, btnGhost } from "../ui.jsx";
 import { AddClientModal } from "./Journal.jsx";
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Сегодняшняя дата по Москве — так же, как считает сервер (UTC тут обманывает ночью)
+const today = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" });
 
 // Журнал записи: групповые и персональные тренировки на выбранную дату.
 export default function PersonalJournal() {
@@ -34,6 +35,13 @@ export default function PersonalJournal() {
   useEffect(() => { load().catch(() => { setPersonal([]); setGroup([]); }); }, [load]);
 
   const canMark = hasPerm("attendance_mark");
+  const [err, setErr] = useState("");
+  // ошибку сервера (например, «только за сегодня») показываем, а не глотаем
+  const run = async (fn) => {
+    setErr("");
+    try { await fn(); await load(); }
+    catch (e) { setErr(e.message || "Не удалось сохранить"); }
+  };
   const stBadge = (s) => s === "attended" ? <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-600">был</span>
     : s === "noshow" ? <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">не пришёл</span>
     : s === "cancelled" ? <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">отмена</span>
@@ -54,6 +62,18 @@ export default function PersonalJournal() {
         </select>
       </div>
 
+      {err && (
+
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+
+          <span className="flex-1">{err}</span>
+
+          <button className="text-xs text-red-500 hover:underline" onClick={() => setErr("")}>скрыть</button>
+
+        </div>
+
+      )}
+
       <Panel title="Персональные тренировки"
         action={canMark ? <button className={btnPrimary} onClick={() => setAddPersonal(true)}><Plus size={15} /> Записать</button> : null}>
         {!personal ? <Spinner /> : personal.length === 0 ? <Empty text="Персональных тренировок на эту дату нет." />
@@ -68,11 +88,11 @@ export default function PersonalJournal() {
                 <span className="ml-auto">{stBadge(p.status)}</span>
                 {canMark && (
                   <div className="flex gap-1.5">
-                    <button title="Был" onClick={async () => { await api.patch(`/api/personal/${p.id}`, { status: p.status === "attended" ? "booked" : "attended" }); load(); }}
+                    <button title="Был" onClick={() => run(() => api.patch(`/api/personal/${p.id}`, { status: p.status === "attended" ? "booked" : "attended" }))}
                       className={`rounded-lg p-1.5 ${p.status === "attended" ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400 hover:bg-emerald-100 hover:text-emerald-600"}`}><Check size={15} /></button>
-                    <button title="Не пришёл" onClick={async () => { await api.patch(`/api/personal/${p.id}`, { status: p.status === "noshow" ? "booked" : "noshow" }); load(); }}
+                    <button title="Не пришёл" onClick={() => run(() => api.patch(`/api/personal/${p.id}`, { status: p.status === "noshow" ? "booked" : "noshow" }))}
                       className={`rounded-lg p-1.5 ${p.status === "noshow" ? "bg-red-500 text-white" : "bg-slate-100 text-slate-400 hover:bg-red-100 hover:text-red-600"}`}><X size={15} /></button>
-                    <button title="Удалить запись" onClick={async () => { if (confirm("Удалить запись?")) { await api.del(`/api/personal/${p.id}`); load(); } }}
+                    <button title="Удалить запись" onClick={() => { if (confirm("Удалить запись?")) run(() => api.del(`/api/personal/${p.id}`)); }}
                       className="rounded-lg bg-slate-100 p-1.5 text-slate-400 hover:text-red-500"><Trash2 size={15} /></button>
                   </div>
                 )}
@@ -94,7 +114,7 @@ export default function PersonalJournal() {
                 {g.no_sub && <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-600">без абонемента</span>}
                 <span className="ml-auto">{stBadge(g.status)}</span>
                 {canMark && (
-                  <button title="Убрать запись" onClick={async () => { if (confirm("Убрать запись?")) { await api.del(`/api/attendance/bookings/${g.booking_id}`); load(); } }}
+                  <button title="Убрать запись" onClick={() => { if (confirm("Убрать запись?")) run(() => api.del(`/api/attendance/bookings/${g.booking_id}`)); }}
                     className="rounded-lg bg-slate-100 p-1.5 text-slate-400 hover:text-red-500"><Trash2 size={15} /></button>
                 )}
               </li>
