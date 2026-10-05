@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { q, tx } from "../db.js";
-import { employee, can } from "../auth.js";
+import { employee, can, assertDateAllowed } from "../auth.js";
 import { deductSub, returnSub } from "./attendance.js";
 
 const r = Router();
@@ -47,6 +47,7 @@ r.patch("/:id", can("attendance_mark"), async (req, res, next) => {
     const result = await tx(async (c) => {
       const { rows: [p] } = await c.query("SELECT * FROM personal_bookings WHERE id=$1 FOR UPDATE", [req.params.id]);
       if (!p) throw Object.assign(new Error("Запись не найдена"), { status: 404 });
+      assertDateAllowed(req, p.date instanceof Date ? p.date.toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" }) : p.date);
 
       let subId = p.client_sub_id;
       if (p.status === "attended" && status !== "attended") { await returnSub(c, p.client_sub_id); subId = null; }

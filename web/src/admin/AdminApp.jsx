@@ -64,7 +64,10 @@ export default function AdminApp() {
     <SettingsProvider>
       <div className="min-h-screen bg-slate-50 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
         {/* Верхняя панель (только телефон) */}
-        <div className="sticky top-0 z-30 flex items-center gap-3 bg-brand-black px-4 py-3 text-white lg:hidden">
+        {/* На айфоне в режиме приложения страница заходит под строку состояния (часы, батарея) —
+            отступ сверху на её высоту, чтобы кнопка меню не оказалась под циферблатом */}
+        <div className="sticky top-0 z-30 flex items-center gap-3 bg-brand-black px-4 py-3 text-white lg:hidden"
+          style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top, 0px))" }}>
           <button onClick={() => setMenuOpen(true)} className="rounded-lg p-1 hover:bg-white/10"><Menu size={22} /></button>
           <img src="/icon-192.png" alt="" className="h-8 w-8 rounded-lg" />
           <span className="text-sm font-bold uppercase tracking-wider">Школа каратэ</span>
@@ -76,7 +79,8 @@ export default function AdminApp() {
         <div className="flex lg:min-h-0 lg:flex-1">
           {menuOpen && <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMenuOpen(false)} />}
 
-          <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-brand-black text-slate-300 transition-transform lg:static lg:z-auto lg:w-56 lg:translate-x-0 ${menuOpen ? "translate-x-0" : "-translate-x-full"}`}>
+          <aside className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-brand-black text-slate-300 transition-transform lg:static lg:z-auto lg:w-56 lg:translate-x-0 ${menuOpen ? "translate-x-0" : "-translate-x-full"}`}
+            style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
             <div className="flex items-center gap-2.5 px-5 py-5">
               <img src="/icon-192.png" alt="" className="h-9 w-9 rounded-lg" />
               <div>

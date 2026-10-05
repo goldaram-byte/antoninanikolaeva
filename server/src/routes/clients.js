@@ -8,11 +8,11 @@ r.use(employee);
 const ownTrainer = (req) => (req.user.scope === "own" ? req.user.trainerId : null);
 const refCode = () => "REF" + Math.random().toString(36).slice(2, 8).toUpperCase();
 
-async function setLinks(c, clientId, disciplineIds = [], trainerIds = []) {
+// Тренер клиента определяется группами расписания (client_trainers_all),
+// вручную привязываются только направления.
+async function setLinks(c, clientId, disciplineIds = []) {
   await c.query("DELETE FROM client_disciplines WHERE client_id=$1", [clientId]);
   for (const id of disciplineIds) if (id) await c.query("INSERT INTO client_disciplines(client_id,discipline_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [clientId, id]);
-  await c.query("DELETE FROM client_trainers WHERE client_id=$1", [clientId]);
-  for (const id of trainerIds) if (id) await c.query("INSERT INTO client_trainers(client_id,trainer_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [clientId, id]);
 }
 
 r.get("/", can("clients_view"), async (req, res, next) => {
@@ -29,10 +29,8 @@ r.get("/", can("clients_view"), async (req, res, next) => {
         COALESCE((SELECT sum(price - paid) FROM client_subscriptions s WHERE s.client_id=c.id AND price>paid AND s.status='active'),0) AS debt,
         COALESCE((SELECT json_agg(jsonb_build_object('id',d.id,'name',d.name,'color',d.color))
                   FROM client_disciplines cd JOIN disciplines d ON d.id=cd.discipline_id WHERE cd.client_id=c.id),'[]') AS disciplines,
-        COALESCE((SELECT json_agg(jsonb_build_object('id',t.id,'name',t.name,
-                    'auto', NOT EXISTS (SELECT 1 FROM client_trainers m WHERE m.client_id=c.id AND m.trainer_id=t.id)))
-                  FROM client_trainers_all ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=c.id),'[]') AS trainers,
-        COALESCE((SELECT json_agg(ct.trainer_id) FROM client_trainers ct WHERE ct.client_id=c.id),'[]') AS manual_trainer_ids
+        COALESCE((SELECT json_agg(DISTINCT jsonb_build_object('id',t.id,'name',t.name))
+                  FROM client_trainers_all ct JOIN trainers t ON t.id=ct.trainer_id WHERE ct.client_id=c.id),'[]') AS trainers
       FROM clients c
       LEFT JOIN branches b ON b.id=c.branch_id
       LEFT JOIN admins m ON m.id=c.manager_id
@@ -66,13 +64,10 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
        WHERE s.client_id=$1 ORDER BY s.purchase_date DESC`, [c.id])).rows;
     const payments = (await q("SELECT * FROM payments WHERE client_id=$1 ORDER BY created_at DESC LIMIT 100", [c.id])).rows;
     const disciplines = (await q("SELECT d.* FROM client_disciplines cd JOIN disciplines d ON d.id=cd.discipline_id WHERE cd.client_id=$1", [c.id])).rows;
-    // тренеры: из групп расписания (auto) плюс отмеченные вручную
+    // тренеры — из групп расписания, в которые записан клиент
     const trainers = (await q(
-      `SELECT t.*, NOT EXISTS (SELECT 1 FROM client_trainers m WHERE m.client_id=$1 AND m.trainer_id=t.id) AS auto
-       FROM client_trainers_all ct JOIN trainers t ON t.id=ct.trainer_id
+      `SELECT DISTINCT t.* FROM client_trainers_all ct JOIN trainers t ON t.id=ct.trainer_id
        WHERE ct.client_id=$1 ORDER BY t.name`, [c.id])).rows;
-    const manualTrainerIds = (await q("SELECT trainer_id FROM client_trainers WHERE client_id=$1", [c.id]))
-      .rows.map((x) => x.trainer_id);
     const loyalty = (await q("SELECT points, reason, created_at FROM loyalty_transactions WHERE client_id=$1 ORDER BY created_at DESC LIMIT 20", [c.id])).rows;
     const referredByName = c.referred_by ? (await q("SELECT name FROM clients WHERE id=$1", [c.referred_by])).rows[0]?.name : null;
     // Группы, за которыми закреплён клиент
@@ -98,14 +93,13 @@ r.get("/:id", can("clients_view"), async (req, res, next) => {
        FROM personal_bookings p LEFT JOIN trainers t ON t.id=p.trainer_id
        WHERE p.client_id=$1
        ORDER BY date DESC, start_time DESC LIMIT 60`, [c.id])).rows;
-    res.json({ ...c, subs, payments, disciplines, trainers, manual_trainer_ids: manualTrainerIds,
-               loyalty, referredByName, groups, visits });
+    res.json({ ...c, subs, payments, disciplines, trainers, loyalty, referredByName, groups, visits });
   } catch (e) { next(e); }
 });
 
 r.post("/", can("clients_edit"), async (req, res, next) => {
   try {
-    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent, referral_code,
+    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, discount_percent, referral_code,
             gender, parent_name, parent_phone, source, manager_id, status } = req.body;
     if (!name) return res.status(400).json({ error: "Имя обязательно" });
     const c = await tx(async (cl) => {
@@ -123,7 +117,7 @@ r.post("/", can("clients_edit"), async (req, res, next) => {
          branch_id || null, discount_percent || 0, refCode(), referrerId,
          gender || null, parent_name || null, parent_phone || null, source || null,
          manager_id || null, status === "inactive" ? "inactive" : "active"]);
-      await setLinks(cl, row.id, discipline_ids, trainer_ids);
+      await setLinks(cl, row.id, discipline_ids);
       if (referrerId) await cl.query("INSERT INTO referrals(referrer_id, referred_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [referrerId, row.id]);
       return row;
     });
@@ -133,7 +127,7 @@ r.post("/", can("clients_edit"), async (req, res, next) => {
 
 r.put("/:id", can("clients_edit"), async (req, res, next) => {
   try {
-    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, trainer_ids, discount_percent,
+    const { name, phone, email, birthdate, notes, branch_id, discipline_ids, discount_percent,
             gender, parent_name, parent_phone, source, manager_id, status } = req.body;
     const c = await tx(async (cl) => {
       const { rows: [row] } = await cl.query(
@@ -147,7 +141,7 @@ r.put("/:id", can("clients_edit"), async (req, res, next) => {
          gender || null, parent_name || null, parent_phone || null, source || null,
          manager_id || null, status ? (status === "inactive" ? "inactive" : "active") : null, req.params.id]);
       if (!row) return null;
-      await setLinks(cl, row.id, discipline_ids, trainer_ids);
+      await setLinks(cl, row.id, discipline_ids);
       return row;
     });
     if (!c) return res.status(404).json({ error: "Клиент не найден" });
@@ -155,8 +149,9 @@ r.put("/:id", can("clients_edit"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Массовые действия над выбранными клиентами: прикрепить/открепить тренера,
-// направление или группу расписания, перевести в активные/неактивные.
+// Массовые действия над выбранными клиентами: прикрепить/открепить
+// направление или группу расписания (тренер следует за группой),
+// перевести в активные/неактивные.
 r.post("/bulk", can("clients_edit"), async (req, res, next) => {
   try {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter(Boolean) : [];
@@ -173,22 +168,11 @@ r.post("/bulk", can("clients_edit"), async (req, res, next) => {
     const allowed = rows.map((x) => x.id);
     if (allowed.length === 0) return res.status(403).json({ error: "Нет доступа к выбранным клиентам" });
 
-    const trainerId = req.body?.trainer_id || null;
     const disciplineId = req.body?.discipline_id || null;
     const sessionId = req.body?.session_id || null;
 
     await tx(async (c) => {
       switch (action) {
-        case "trainer_add":
-          if (!trainerId) throw Object.assign(new Error("Не выбран тренер"), { status: 400 });
-          await c.query(
-            `INSERT INTO client_trainers(client_id, trainer_id)
-             SELECT unnest($1::uuid[]), $2 ON CONFLICT DO NOTHING`, [allowed, trainerId]);
-          break;
-        case "trainer_remove":
-          if (!trainerId) throw Object.assign(new Error("Не выбран тренер"), { status: 400 });
-          await c.query("DELETE FROM client_trainers WHERE client_id = ANY($1::uuid[]) AND trainer_id=$2", [allowed, trainerId]);
-          break;
         case "discipline_add":
           if (!disciplineId) throw Object.assign(new Error("Не выбрано направление"), { status: 400 });
           await c.query(

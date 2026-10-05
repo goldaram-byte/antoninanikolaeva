@@ -43,7 +43,11 @@ export default function PersonalJournal() {
     <div className="space-y-5">
       <Header title="Журнал записи" subtitle="Групповые и персональные тренировки на дату" />
       <div className="flex flex-wrap gap-3">
-        <input type="date" className={inputCls + " w-auto"} value={date} onChange={(e) => setDate(e.target.value)} />
+        <input type="date" className={inputCls + " w-auto"} value={date} onChange={(e) => setDate(e.target.value)}
+          title={hasPerm("attendance_any_date") ? "" : "Отмечать можно только за сегодня"} />
+        {!hasPerm("attendance_any_date") && (
+          <span className="self-center text-xs text-slate-400">отметки — только за сегодня; за другие даты отмечает владелец</span>
+        )}
         <select className={inputCls + " w-auto"} value={fBranch} onChange={(e) => setFBranch(e.target.value)}>
           <option value="">Все филиалы</option>
           {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

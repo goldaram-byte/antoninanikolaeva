@@ -6,6 +6,7 @@ export const PERMISSIONS = [
   { key: "schedule_edit", label: "Редактировать расписание" },
   { key: "attendance_view", label: "Видеть посещаемость" },
   { key: "attendance_mark", label: "Отмечать посещаемость" },
+  { key: "attendance_any_date", label: "Отмечать посещаемость за любую дату (задним числом)" },
   { key: "subs_manage", label: "Абонементы (тарифы и выдача)" },
   { key: "finance_view", label: "Видеть оплаты и долги" },
   { key: "payments_manage", label: "Проводить оплаты" },

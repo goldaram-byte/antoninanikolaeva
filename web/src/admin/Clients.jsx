@@ -21,7 +21,7 @@ export default function Clients() {
   const [importOpen, setImportOpen] = useState(false);
   const [sel, setSel] = useState(() => new Set());   // выделенные клиенты
   const [sessions, setSessions] = useState([]);      // группы расписания
-  const [bulk, setBulk] = useState({ trainer: "", disc: "", session: "" });
+  const [bulk, setBulk] = useState({ disc: "", session: "" });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMsg, setBulkMsg] = useState("");
 
@@ -120,12 +120,7 @@ export default function Clients() {
             </span>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3">
-            <BulkRow label="Тренер" value={bulk.trainer} onChange={(v) => setBulk({ ...bulk, trainer: v })}
-              options={trainers.map((t) => ({ id: t.id, name: t.name }))} busy={bulkBusy}
-              onAdd={() => runBulk("trainer_add", { trainer_id: bulk.trainer })}
-              onRemove={() => runBulk("trainer_remove", { trainer_id: bulk.trainer }, "Открепить выбранных клиентов от тренера?")} />
-
+          <div className="grid gap-2 sm:grid-cols-2">
             <BulkRow label="Направление" value={bulk.disc} onChange={(v) => setBulk({ ...bulk, disc: v })}
               options={disc.map((d) => ({ id: d.id, name: d.name }))} busy={bulkBusy}
               onAdd={() => runBulk("discipline_add", { discipline_id: bulk.disc })}
@@ -180,7 +175,7 @@ export default function Clients() {
         </div>
       )}
 
-      {edit && <ClientForm client={edit} branches={branches} trainers={trainers} disc={disc}
+      {edit && <ClientForm client={edit} branches={branches} disc={disc}
         onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
       {importOpen && <ImportModal branches={branches}
         onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); load(); }} />}
@@ -202,15 +197,13 @@ function BulkRow({ label, value, onChange, options, onAdd, onRemove, busy }) {
   );
 }
 
-export function ClientForm({ client, branches, trainers, disc, onClose, onSaved }) {
+export function ClientForm({ client, branches, disc, onClose, onSaved }) {
   const isNew = !client.id;
   const [f, setF] = useState({
     name: "", phone: "", email: "", notes: "", ...client,
     birthdate: client.birthdate?.slice(0, 10) || "",
     branch_id: client.branch_id || "",
     discipline_ids: (client.disciplines || []).map((d) => d.id),
-    // вручную отмечаются только дополнительные тренеры: основной приходит из группы
-    trainer_ids: client.manual_trainer_ids || (client.trainers || []).filter((t) => !t.auto).map((t) => t.id),
     discount_percent: client.discount_percent || 0,
     gender: client.gender || "",
     parent_name: client.parent_name || "",
@@ -232,7 +225,7 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
       const body = {
         name: f.name, phone: f.phone, email: f.email, birthdate: f.birthdate || null,
         notes: f.notes, branch_id: f.branch_id || null,
-        discipline_ids: f.discipline_ids, trainer_ids: f.trainer_ids,
+        discipline_ids: f.discipline_ids,
         discount_percent: Number(f.discount_percent) || 0,
         gender: f.gender || null, parent_name: f.parent_name, parent_phone: f.parent_phone,
         source: f.source, manager_id: f.manager_id || null, status: f.status,
@@ -313,19 +306,10 @@ export function ClientForm({ client, branches, trainers, disc, onClose, onSaved 
           </div>
         </Field>
 
-        <Field label="Тренеры дополнительно">
-          <div className="flex flex-wrap gap-2">
-            {trainers.map((t) => (
-              <button key={t.id} type="button" onClick={() => toggle("trainer_ids", t.id)}
-                className={`rounded-full border px-3 py-1 text-sm ${f.trainer_ids.includes(t.id) ? "border-brand bg-red-50 text-brand-dark" : "border-slate-200 text-slate-600"}`}>{t.name}</button>
-            ))}
-            {trainers.length === 0 && <span className="text-xs text-slate-400">Сначала добавьте тренеров в Настройках</span>}
-          </div>
-          <p className="mt-1 text-xs text-slate-400">
-            Тренер группы из расписания считается тренером клиента автоматически — отмечать его здесь не нужно.
-            Отмечайте только тех, кто ведёт ученика дополнительно (например, персональные тренировки).
-          </p>
-        </Field>
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          Тренер определяется группой расписания: запишите ученика в группу (карточка → «Группы (расписание)»
+          или массово в списке) — тренер этой группы станет его тренером.
+        </p>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Персональная скидка, %"><input type="number" className={inputCls} value={f.discount_percent} onChange={(e) => setF({ ...f, discount_percent: e.target.value })} /></Field>

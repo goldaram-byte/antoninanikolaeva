@@ -45,3 +45,16 @@ export const canAny = (...perms) => (req, res, next) => {
   if (p.__all || perms.some((k) => p[k])) return next();
   return res.status(403).json({ error: "Недостаточно прав" });
 };
+
+// Сегодняшняя дата по московскому времени (сервер может жить в UTC)
+export const todayMsk = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" });
+
+// Посещаемость за другую дату (задним числом или вперёд) может отмечать только
+// владелец или роль с правом attendance_any_date; остальные — только за сегодня.
+export function assertDateAllowed(req, date) {
+  const p = req.user?.perms || {};
+  if (p.__all || p.attendance_any_date) return;
+  const d = String(date || "").slice(0, 10);
+  if (d !== todayMsk())
+    throw Object.assign(new Error("Отмечать посещения можно только за сегодня. За другую дату — владелец или сотрудник с правом «за любую дату»."), { status: 403 });
+}

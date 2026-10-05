@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { q, tx } from "../db.js";
-import { employee, can } from "../auth.js";
+import { employee, can, assertDateAllowed } from "../auth.js";
 
 const r = Router();
 r.use(employee);
@@ -79,6 +79,7 @@ r.post("/mark", can("attendance_mark"), async (req, res, next) => {
   try {
     const { session_id, date, client_id, status } = req.body;
     if (!session_id || !date || !client_id || !status) return res.status(400).json({ error: "Не хватает данных" });
+    assertDateAllowed(req, date);
     const result = await tx(async (c) => {
       const { rows: [ex] } = await c.query(
         "SELECT * FROM bookings WHERE client_id=$1 AND session_id=$2 AND date=$3::date FOR UPDATE", [client_id, session_id, date]);
@@ -111,6 +112,7 @@ r.post("/mark", can("attendance_mark"), async (req, res, next) => {
 r.post("/book", can("attendance_mark"), async (req, res, next) => {
   try {
     const { session_id, date, client_id } = req.body;
+    assertDateAllowed(req, date);
     const { rows: [b] } = await q(
       `INSERT INTO bookings(client_id, session_id, date, status, marked_by) VALUES($1,$2,$3::date,'booked',$4)
        ON CONFLICT (client_id, session_id, date) DO UPDATE SET status='booked'
@@ -125,6 +127,7 @@ r.delete("/bookings/:id", can("attendance_mark"), async (req, res, next) => {
     await tx(async (c) => {
       const { rows: [b] } = await c.query("SELECT * FROM bookings WHERE id=$1 FOR UPDATE", [req.params.id]);
       if (!b) return;
+      assertDateAllowed(req, b.date instanceof Date ? b.date.toLocaleDateString("sv-SE", { timeZone: "Europe/Moscow" }) : b.date);
       if (b.status === "attended") await returnSub(c, b.client_sub_id);
       await c.query("DELETE FROM bookings WHERE id=$1", [req.params.id]);
     });
