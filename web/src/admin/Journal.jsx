@@ -116,7 +116,8 @@ export function AddClientModal({ onClose, onPick, title = "Добавить кл
   const [list, setList] = useState([]);
   useEffect(() => {
     const t = setTimeout(() => {
-      api.get(`/api/clients?search=${encodeURIComponent(q)}`).then((r) => setList(r.slice(0, 12))).catch(() => {});
+      // /pick ищет по всей базе: отметить можно любого ребёнка, не только своих
+      api.get(`/api/clients/pick?search=${encodeURIComponent(q)}`).then((r) => setList(r.slice(0, 12))).catch(() => {});
     }, 250);
     return () => clearTimeout(t);
   }, [q]);
@@ -126,8 +127,11 @@ export function AddClientModal({ onClose, onPick, title = "Добавить кл
       <ul className="mt-3 max-h-72 divide-y divide-slate-100 overflow-y-auto">
         {list.map((c) => (
           <li key={c.id}>
-            <button className="flex w-full items-center justify-between px-2 py-2.5 text-left text-sm hover:bg-slate-50" onClick={() => onPick(c.id)}>
-              <span className="font-medium text-slate-800">{c.name}</span>
+            <button className="flex w-full items-center justify-between px-2 py-2.5 text-left text-sm hover:bg-slate-50" onClick={() => onPick(c.id, c)}>
+              <span className="font-medium text-slate-800">
+                {c.name}
+                {c.status === "inactive" && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">неактивный</span>}
+              </span>
               <span className="text-xs text-slate-400">{c.phone || ""}{c.branch_name ? ` · ${c.branch_name}` : ""}</span>
             </button>
           </li>

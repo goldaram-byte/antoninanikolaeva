@@ -156,7 +156,7 @@ function PersonalForm({ date, branches, trainers, onClose, onSaved }) {
         </div>
       </Modal>
       {pick && <AddClientModal title="Клиент для персональной" onClose={() => setPick(false)}
-        onPick={(id) => { setPick(false); api.get(`/api/clients/${id}`).then((c) => setF((p) => ({ ...p, client_id: id, client_name: c.name }))); }} />}
+        onPick={(id, c) => { setPick(false); setF((p) => ({ ...p, client_id: id, client_name: c.name })); }} />}
     </>
   );
 }
@@ -203,7 +203,7 @@ function GroupBookModal({ date, fBranch, onClose, onSaved }) {
         </div>
       </Modal>
       {pick && <AddClientModal onClose={() => setPick(false)}
-        onPick={(id) => { setPick(false); api.get(`/api/clients/${id}`).then((c) => setClient({ id, name: c.name })); }} />}
+        onPick={(id, c) => { setPick(false); setClient({ id, name: c.name }); }} />}
     </>
   );
 }

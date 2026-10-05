@@ -1,7 +1,7 @@
 import { Router } from "express";
 import ExcelJS from "exceljs";
 import { q, tx } from "../db.js";
-import { employee, can } from "../auth.js";
+import { employee, can, canAny } from "../auth.js";
 
 const r = Router();
 r.use(employee);
@@ -109,6 +109,23 @@ r.get("/export.xlsx", can("clients_view"), async (req, res, next) => {
     res.setHeader("Content-Disposition", `attachment; filename="clients_${stamp}.xlsx"; filename*=UTF-8''${encodeURIComponent("Клиенты_" + stamp + ".xlsx")}`);
     await wb.xlsx.write(res);
     res.end();
+  } catch (e) { next(e); }
+});
+
+// Поиск клиента для отметки на тренировке или записи. Намеренно БЕЗ режима
+// «только свои»: любой тренер и сотрудник может отметить любого ребёнка —
+// например, пришедшего из другой группы или филиала. Отдаём только то, что
+// нужно для выбора: имя, телефон, филиал.
+r.get("/pick", canAny("attendance_mark", "clients_view"), async (req, res, next) => {
+  try {
+    const search = `%${String(req.query.search || "").toLowerCase()}%`;
+    const { rows } = await q(
+      `SELECT c.id, c.name, c.phone, c.status, b.name AS branch_name
+       FROM clients c LEFT JOIN branches b ON b.id=c.branch_id
+       WHERE lower(c.name) LIKE $1 OR coalesce(c.phone,'') LIKE $1
+          OR coalesce(c.parent_phone,'') LIKE $1 OR lower(coalesce(c.parent_name,'')) LIKE $1
+       ORDER BY (c.status='active') DESC, c.name LIMIT 20`, [search]);
+    res.json(rows);
   } catch (e) { next(e); }
 });
 
