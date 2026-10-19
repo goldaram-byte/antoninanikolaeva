@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
 # Ночной автобэкап базы данных CRM «Школа каратэ Николаевой Антонины».
-# Хранит сжатые копии 14 дней в /opt/karate/backups.
+# Хранит сжатые копии базы и файлов клиентов 14 дней в /opt/karate/backups.
 #
 # Установка (один раз, под root):
 #   chmod +x /opt/karate/deploy/backup.sh
@@ -28,5 +28,17 @@ else
   exit 1
 fi
 
+# Файлы клиентов (сканы, справки, фото) — отдельным архивом
+UPLOADS_DIR="${UPLOAD_DIR:-/opt/karate/uploads}"
+if [ -d "$UPLOADS_DIR" ] && [ -n "$(ls -A "$UPLOADS_DIR" 2>/dev/null)" ]; then
+  UFILE="$BACKUP_DIR/uploads_${STAMP}.tar.gz"
+  if tar -czf "$UFILE" -C "$UPLOADS_DIR" .; then
+    echo "$(date '+%F %T') ✓ файлы клиентов: $UFILE ($(du -h "$UFILE" | cut -f1))"
+  else
+    echo "$(date '+%F %T') ✗ не удалось заархивировать файлы клиентов"
+  fi
+fi
+
 # Удаляем копии старше KEEP_DAYS дней
 find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -mtime +$KEEP_DAYS -delete
+find "$BACKUP_DIR" -name "uploads_*.tar.gz" -mtime +$KEEP_DAYS -delete

@@ -360,3 +360,19 @@ CREATE OR REPLACE VIEW client_trainers_all AS
   SELECT cs.client_id, s.trainer_id
     FROM client_sessions cs JOIN sessions s ON s.id = cs.session_id
    WHERE s.trainer_id IS NOT NULL;
+
+-- ── Этап 10: файлы в карточке клиента ──────────────────────────────────────
+-- Сканы договоров, справки, фото — сами файлы лежат на диске (UPLOAD_DIR),
+-- в базе только их описание. Удаление клиента удаляет и записи о файлах.
+CREATE TABLE IF NOT EXISTS client_files (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id   UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,                       -- имя файла, как его видит человек
+  stored_name TEXT NOT NULL,                       -- имя на диске (случайное, без пути)
+  mime        TEXT NOT NULL DEFAULT '',
+  size        BIGINT NOT NULL DEFAULT 0,
+  note        TEXT NOT NULL DEFAULT '',
+  uploaded_by TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_client_files_client ON client_files(client_id, created_at DESC);

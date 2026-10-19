@@ -7,6 +7,7 @@ import { ClientForm } from "./Clients.jsx";
 import BuyModal from "./BuyModal.jsx";
 import PaymentModal from "./PaymentModal.jsx";
 import { WEEKDAYS } from "./Schedule.jsx";
+import ClientFiles from "./ClientFiles.jsx";
 
 const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join(".") : "—");
 const GENDERS = { m: "Мужской", f: "Женский" };
@@ -139,6 +140,9 @@ export default function ClientDetail() {
             ))}
           </ul>}
       </Panel>
+
+      {/* Файлы: договоры, справки, фото */}
+      <ClientFiles clientId={c.id} />
 
       {/* Абонементы */}
       <Panel title="Абонементы" action={hasPerm("subs_manage") ? <button className={btnPrimary} onClick={() => setBuy(true)}><Plus size={15} /> Выдать</button> : null}>

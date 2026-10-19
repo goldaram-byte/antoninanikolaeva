@@ -1,5 +1,8 @@
 import { Router } from "express";
 import ExcelJS from "exceljs";
+import { unlink } from "node:fs";
+import { join, basename } from "node:path";
+import { UPLOAD_DIR } from "./clientfiles.js";
 import { q, tx } from "../db.js";
 import { employee, can, canAny } from "../auth.js";
 
@@ -303,8 +306,13 @@ r.put("/:id/status", can("clients_edit"), async (req, res, next) => {
 });
 
 r.delete("/:id", can("clients_edit"), async (req, res, next) => {
-  try { await q("DELETE FROM clients WHERE id=$1", [req.params.id]); res.json({ ok: true }); }
-  catch (e) { next(e); }
+  try {
+    // файлы клиента стираем и с диска — иначе останутся «сироты»
+    const { rows: files } = await q("SELECT stored_name FROM client_files WHERE client_id=$1", [req.params.id]);
+    await q("DELETE FROM clients WHERE id=$1", [req.params.id]);
+    for (const f of files) unlink(join(UPLOAD_DIR, basename(f.stored_name)), () => {});
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 // Привязка клиента к группам расписания (задать весь список)
